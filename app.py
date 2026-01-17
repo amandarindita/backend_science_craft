@@ -8,7 +8,7 @@ from flask_jwt_extended import JWTManager, create_access_token, jwt_required, ge
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import google.generativeai as genai
-from datetime import datetime, timedelta # <-- PENTING
+from datetime import datetime, timedelta
 
 # <-- Import untuk LangChain RAG -->
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -180,7 +180,7 @@ def register():
     access_token = create_access_token(identity=new_user.id)
     return jsonify(access_token=access_token, message=f"User {username} berhasil dibuat!"), 201
 
-# 3. LOGIN GOOGLE (SUDAH DIPERBAIKI)
+# 3. LOGIN GOOGLE 
 @app.route('/auth/google', methods=['POST'])
 def google_login():
     data = request.get_json()
