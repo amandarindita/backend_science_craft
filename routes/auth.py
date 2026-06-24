@@ -25,6 +25,9 @@ def login():
         return jsonify({"error": "Email atau password salah"}), 401
 
     update_streak(user) 
+    if user.daily_status != 'active':
+        user.daily_status = 'login'
+        db.session.commit()
     access_token = create_access_token(identity=str(user.id))
     
     # --- UPDATE: Kirim role ke Flutter ---
@@ -33,7 +36,8 @@ def login():
         "message": "Login berhasil!",
         "user": {
             "email": user.email,
-            "role": user.role
+            "role": user.role,
+             "has_password": bool(user.password_hash)
         }
     }), 200
 
@@ -58,6 +62,7 @@ def register():
         username=username, 
         email=email, 
         password_hash=hashed_password, 
+        role='user',
         total_xp=0,
         streak_count=1,       
         last_login_date=today 
@@ -73,7 +78,8 @@ def register():
         "message": f"User {username} berhasil dibuat!",
         "user": {
             "email": new_user.email,
-            "role": new_user.role
+            "role": new_user.role,
+            "has_password": True
         }
     }), 201
 
@@ -108,6 +114,9 @@ def google_login():
             db.session.commit()
         else:
             update_streak(user) 
+        if user.daily_status != 'active':
+            user.daily_status = 'login'
+            db.session.commit()
             
         access_token = create_access_token(identity=str(user.id))
         
@@ -117,7 +126,8 @@ def google_login():
             "message": "Login Google berhasil!",
             "user": {
                 "email": user.email,
-                "role": user.role
+                "role": user.role,
+                 "has_password": bool(user.password_hash)
             }
         }), 200
         
@@ -144,3 +154,43 @@ def update_profile():
         
     db.session.commit()
     return jsonify({"message": "Profil diperbarui!", "username": user.username}), 200
+
+# 5. GANTI PASSWORD
+@auth_bp.route('/change-password', methods=['PUT'])
+@jwt_required()
+def change_password():
+    current_user_id = get_jwt_identity()
+    data = request.get_json() or {}
+
+    old_password = data.get('old_password')
+    new_password = data.get('new_password')
+    confirm_password = data.get('confirm_password')
+
+    user = db.session.get(User, current_user_id)
+    if not user:
+        return jsonify({"error": "User tidak ditemukan"}), 404
+
+    # Kalau password_hash kosong, berarti akun Google
+    if not user.password_hash:
+        return jsonify({
+            "error": "Akun Google tidak dapat mengubah password melalui aplikasi."
+        }), 400
+
+    if not old_password or not new_password or not confirm_password:
+        return jsonify({
+            "error": "Password lama, password baru, dan konfirmasi password wajib diisi."
+        }), 400
+
+    if not bcrypt.check_password_hash(user.password_hash, old_password):
+        return jsonify({"error": "Password lama salah."}), 401
+
+    if new_password != confirm_password:
+        return jsonify({"error": "Konfirmasi password baru tidak sesuai."}), 400
+
+    if len(new_password) < 6:
+        return jsonify({"error": "Password baru minimal 6 karakter."}), 400
+
+    user.password_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
+    db.session.commit()
+
+    return jsonify({"message": "Password berhasil diperbarui."}), 200
