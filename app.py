@@ -39,6 +39,7 @@ jwt.init_app(app)
 app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(gamification_bp) # Tanpa prefix karena di filenya sudah ditulis /gamification/... dan /sync/...
 app.register_blueprint(admin_bp, url_prefix='/admin')
+print(app.url_map)
 app.register_blueprint(chatbot_bp, url_prefix='/chat')
 app.register_blueprint(daily_quest_bp)
 

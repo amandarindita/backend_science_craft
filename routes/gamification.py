@@ -14,12 +14,10 @@ def beri_badge_ke_user(user_id, badge_name):
     Fungsi internal untuk memeriksa dan memberikan badge ke siswa.
     Mencegah duplikasi agar user tidak mendapat badge yang sama berkali-kali.
     """
-    # 1. Cari data master badge berdasarkan namanya
     badge = db.session.scalar(db.select(Badge).filter_by(name=badge_name))
     if not badge:
         return False
 
-    # 2. Cek apakah user sudah punya badge ini?
     existing = db.session.scalar(db.select(UserBadge).filter_by(user_id=user_id, badge_id=badge.id))
     
     # 3. Kalau belum punya, masukkan ke database user_badges + notifications

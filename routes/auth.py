@@ -23,14 +23,19 @@ def login():
 
     if not user or not user.password_hash or not bcrypt.check_password_hash(user.password_hash, password):
         return jsonify({"error": "Email atau password salah"}), 401
-
-    update_streak(user) 
-    if user.daily_status != 'active':
-        user.daily_status = 'login'
-        db.session.commit()
-    access_token = create_access_token(identity=str(user.id))
     
-    # --- UPDATE: Kirim role ke Flutter ---
+    today = datetime.utcnow().date()
+    old_last_login_date = user.last_login_date
+
+    update_streak(user)
+
+    if old_last_login_date != today:
+        user.daily_status = 'login'
+
+    db.session.commit()
+
+    access_token = create_access_token(identity=str(user.id))
+ 
     return jsonify({
         "access_token": access_token, 
         "message": "Login berhasil!",
@@ -65,7 +70,8 @@ def register():
         role='user',
         total_xp=0,
         streak_count=1,       
-        last_login_date=today 
+        last_login_date=today,
+        daily_status='login'
     )
     db.session.add(new_user)
     db.session.commit()
@@ -113,14 +119,16 @@ def google_login():
             db.session.add(user)
             db.session.commit()
         else:
-            update_streak(user) 
-        if user.daily_status != 'active':
-            user.daily_status = 'login'
-            db.session.commit()
+            old_last_login_date = user.last_login_date
+            update_streak(user)
+
+            if old_last_login_date != today:
+                user.daily_status = 'login'
+
+        db.session.commit()
             
         access_token = create_access_token(identity=str(user.id))
         
-        # --- UPDATE: Kirim role ke Flutter ---
         return jsonify({
             "access_token": access_token, 
             "message": "Login Google berhasil!",

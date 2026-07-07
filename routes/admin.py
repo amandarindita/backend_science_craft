@@ -301,26 +301,24 @@ def import_materials_csv():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Gagal import materi: {str(e)}"}), 500
-    
-    @admin_bp.route('/import/questions', methods=['POST'])
-    @jwt_required()
-    def import_questions_csv():
-        current_user_id = get_jwt_identity()
-        if not is_admin(current_user_id):
-            return jsonify({"error": "Akses ditolak! Khusus Admin."}), 403
 
-        if 'file' not in request.files:
-            return jsonify({"error": "File CSV tidak ditemukan. Gunakan field name 'file'."}), 400
+@admin_bp.route('/import/questions', methods=['POST'])
+@jwt_required()
+def import_questions_csv():
+    current_user_id = get_jwt_identity()
+    if not is_admin(current_user_id):
+        return jsonify({"error": "Akses ditolak! Khusus Admin."}), 403
 
-        file = request.files['file']
+    if 'file' not in request.files:
+        return jsonify({"error": "File CSV tidak ditemukan. Gunakan field name 'file'."}), 400
+    file = request.files['file']
 
-        if file.filename == '':
-            return jsonify({"error": "Nama file kosong."}), 400
+    if file.filename == '':
+       return jsonify({"error": "Nama file kosong."}), 400
+    valid_types = {'konsep', 'pemahaman', 'studi_kasus'}
+    valid_answers = {'A', 'B', 'C', 'D'}
 
-        valid_types = {'konsep', 'pemahaman', 'studi_kasus'}
-        valid_answers = {'A', 'B', 'C', 'D'}
-
-        try:
+    try:
             stream = io.StringIO(file.stream.read().decode("utf-8-sig"), newline=None)
             reader = csv.DictReader(stream)
 
@@ -410,9 +408,9 @@ def import_materials_csv():
                 "skipped": skipped
             }), 200
 
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({"error": f"Gagal import soal: {str(e)}"}), 500
+    except Exception as e:
+        db.session.rollback()
+    return jsonify({"error": f"Gagal import soal: {str(e)}"}), 500
 
 # ==========================================
 # CRUD SOAL KUIS
