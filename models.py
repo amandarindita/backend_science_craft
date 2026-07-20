@@ -167,3 +167,44 @@ class DailyQuestItem(db.Model):
             name='uq_daily_quest_item_key'
         ),
     )
+
+class OTPVerification(db.Model):
+    __tablename__ = 'otp_verifications'
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), nullable=False)
+    otp_code = db.Column(db.String(6), nullable=False)
+    username = db.Column(db.String(80), nullable=False)  # <-- PASTIKAN BARIS INI ADA!
+    password_hash = db.Column(db.String(128), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+class UserLabResult(db.Model):
+    __tablename__ = 'user_lab_results'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('user.id'),
+        nullable=False
+    )
+
+    material_id = db.Column(
+        db.Integer,
+        db.ForeignKey('material.id'),
+        nullable=False
+    )
+
+    experiment_id = db.Column(db.String(100), nullable=False)
+    display_name = db.Column(db.String(150), nullable=True)
+
+    duration_seconds = db.Column(db.Integer, default=0)
+    remaining_seconds = db.Column(db.Integer, default=0)
+    elapsed_seconds = db.Column(db.Integer, default=0)
+
+    timestamp_utc = db.Column(db.String(100), nullable=True)
+
+    summary_json = db.Column(db.Text, nullable=True)
+    activities_json = db.Column(db.Text, nullable=True)
+    raw_payload_json = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

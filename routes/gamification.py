@@ -1,14 +1,21 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
-from models import User, UserProgress, UserBadge, Material, Badge, Notification, FunFact, UserFunFactRead # 🌟 Tambah Notification di sini
 from datetime import datetime 
-
+from models import (
+    User,
+    UserProgress,
+    UserBadge,
+    Material,
+    Badge,
+    Notification,
+    FunFact,
+    UserFunFactRead,
+    UserLabResult
+)
+import json
 gamification_bp = Blueprint('gamification', __name__)
 
-# ==========================================
-# 🛠️ HELPER FUNCTION: OTAK PENEMBAK BADGE
-# ==========================================
 def beri_badge_ke_user(user_id, badge_name):
     """
     Fungsi internal untuk memeriksa dan memberikan badge ke siswa.
@@ -492,6 +499,8 @@ def complete_lab():
 
     user.daily_status = 'active'
     
+    new_level = old_level
+    level_up = False
     if not was_lab_completed:
         user_progress.lab_completed = True
         user.total_xp += LAB_XP
@@ -539,4 +548,151 @@ def complete_lab():
         "level_up": level_up,
         "lab_completed": True,
         "new_badges_unlocked": badge_baru_didapat
+    }), 200
+
+@gamification_bp.route('/lab/result/save', methods=['POST'])
+@jwt_required()
+def save_lab_result():
+    current_user_id = get_jwt_identity()
+    data = request.get_json() or {}
+
+    material_id = data.get('material_id')
+    experiment_id = data.get('experiment_id') or data.get('experimentId')
+    display_name = data.get('display_name') or data.get('displayName')
+
+    if material_id is None:
+        return jsonify({"error": "Material ID wajib diisi"}), 400
+
+    try:
+        material_id = int(material_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Material ID tidak valid"}), 400
+
+    material = db.session.get(Material, material_id)
+    if not material:
+        return jsonify({"error": "Materi tidak ditemukan"}), 404
+
+    if not material.unity_scene_id:
+        return jsonify({"error": "Materi ini tidak memiliki simulasi lab"}), 400
+
+    if not experiment_id:
+        experiment_id = material.unity_scene_id
+
+    summary_json = data.get('summary_json') or data.get('summaryJson')
+    activities = data.get('activities', [])
+
+    # Kalau summary_json dikirim sebagai dict/list, ubah jadi string JSON
+    if isinstance(summary_json, (dict, list)):
+        summary_json = json.dumps(summary_json, ensure_ascii=False)
+
+    # Kalau summary_json None, simpan string kosong
+    if summary_json is None:
+        summary_json = ""
+
+    activities_json = json.dumps(activities, ensure_ascii=False)
+    raw_payload_json = json.dumps(data, ensure_ascii=False)
+
+    duration_seconds = data.get('duration_seconds') or data.get('durationSeconds') or 0
+    remaining_seconds = data.get('remaining_seconds') or data.get('remainingSeconds') or 0
+    elapsed_seconds = data.get('elapsed_seconds') or data.get('elapsedSeconds') or 0
+    timestamp_utc = data.get('timestamp_utc') or data.get('timestampUtc')
+
+    try:
+        duration_seconds = int(float(duration_seconds))
+        remaining_seconds = int(float(remaining_seconds))
+        elapsed_seconds = int(float(elapsed_seconds))
+    except (TypeError, ValueError):
+        duration_seconds = 0
+        remaining_seconds = 0
+        elapsed_seconds = 0
+
+    lab_result = UserLabResult(
+        user_id=current_user_id,
+        material_id=material_id,
+        experiment_id=experiment_id,
+        display_name=display_name,
+        duration_seconds=duration_seconds,
+        remaining_seconds=remaining_seconds,
+        elapsed_seconds=elapsed_seconds,
+        timestamp_utc=timestamp_utc,
+        summary_json=summary_json,
+        activities_json=activities_json,
+        raw_payload_json=raw_payload_json
+    )
+
+    db.session.add(lab_result)
+    db.session.commit()
+
+    return jsonify({
+        "message": "Hasil simulasi lab berhasil disimpan",
+        "result_id": lab_result.id,
+        "experiment_id": lab_result.experiment_id,
+        "material_id": lab_result.material_id
+    }), 201
+
+@gamification_bp.route('/lab/results', methods=['GET'])
+@jwt_required()
+def get_lab_results():
+    current_user_id = get_jwt_identity()
+
+    results = db.session.execute(
+        db.select(UserLabResult)
+        .filter_by(user_id=current_user_id)
+        .order_by(UserLabResult.created_at.desc())
+    ).scalars().all()
+
+    response = []
+
+    for item in results:
+        response.append({
+            "id": item.id,
+            "material_id": item.material_id,
+            "experiment_id": item.experiment_id,
+            "display_name": item.display_name,
+            "elapsed_seconds": item.elapsed_seconds,
+            "duration_seconds": item.duration_seconds,
+            "remaining_seconds": item.remaining_seconds,
+            "timestamp_utc": item.timestamp_utc,
+            "created_at": item.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        })
+
+    return jsonify(response), 200
+
+@gamification_bp.route('/lab/results/<int:result_id>', methods=['GET'])
+@jwt_required()
+def get_lab_result_detail(result_id):
+    current_user_id = get_jwt_identity()
+
+    result = db.session.scalar(
+        db.select(UserLabResult).filter_by(
+            id=result_id,
+            user_id=current_user_id
+        )
+    )
+
+    if not result:
+        return jsonify({"error": "Hasil lab tidak ditemukan"}), 404
+
+    try:
+        activities = json.loads(result.activities_json or "[]")
+    except json.JSONDecodeError:
+        activities = []
+
+    try:
+        summary = json.loads(result.summary_json or "{}")
+    except json.JSONDecodeError:
+        summary = result.summary_json
+
+    return jsonify({
+        "id": result.id,
+        "material_id": result.material_id,
+        "experiment_id": result.experiment_id,
+        "display_name": result.display_name,
+        "duration_seconds": result.duration_seconds,
+        "remaining_seconds": result.remaining_seconds,
+        "elapsed_seconds": result.elapsed_seconds,
+        "timestamp_utc": result.timestamp_utc,
+        "summary": summary,
+        "activities": activities,
+        "created_at": result.created_at.strftime("%Y-%m-%d %H:%M:%S")
     }), 200
