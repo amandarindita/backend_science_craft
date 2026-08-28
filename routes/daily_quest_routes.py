@@ -5,6 +5,7 @@ import random
 
 from extensions import db
 from models import User, DailyQuestDay, DailyQuestItem, Notification
+from milestone_service import sync_user_milestones
 
 
 daily_quest_bp = Blueprint('daily_quest', __name__)
@@ -232,6 +233,7 @@ def claim_daily_quest_reward():
             "daily_quest": serialize_daily_quest(day)
         }), 400
 
+    old_xp = int(user.total_xp or 0)
     old_level = (user.total_xp // 200) + 1
 
     user.total_xp += day.reward_xp
@@ -249,6 +251,12 @@ def claim_daily_quest_reward():
         )
         db.session.add(notif)
 
+    milestone_baru = sync_user_milestones(
+        user,
+        previous_xp=old_xp,
+        notify_new=True,
+    )
+
     db.session.commit()
 
     return jsonify({
@@ -257,5 +265,6 @@ def claim_daily_quest_reward():
         "current_xp": user.total_xp,
         "level": new_level,
         "level_up": level_up,
+        "new_milestones_unlocked": [r.reward_key for r in milestone_baru],
         "daily_quest": serialize_daily_quest(day)
     }), 200

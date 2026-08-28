@@ -14,6 +14,11 @@ from models import (
     UserLabResult
 )
 import json
+from milestone_service import (
+    equip_user_frame,
+    serialize_milestone_state,
+    sync_user_milestones,
+)
 gamification_bp = Blueprint('gamification', __name__)
 
 def beri_badge_ke_user(user_id, badge_name):
@@ -84,6 +89,7 @@ def sync_progress():
     level_up = False
 
     user_sekarang = db.session.get(User, current_user_id)
+    old_xp = int(user_sekarang.total_xp or 0) if user_sekarang else 0
 
     if user_sekarang:
         user_sekarang.daily_status = 'active'
@@ -103,6 +109,14 @@ def sync_progress():
             title="Hore! Level Naik! 🚀",
             message=f"Keren banget! Sekarang kamu naik ke Level {new_level}!"
         ))
+
+    milestone_baru = []
+    if user_sekarang:
+        milestone_baru = sync_user_milestones(
+            user_sekarang,
+            previous_xp=old_xp,
+            notify_new=xp_added > 0,
+        )
 
     db.session.commit()
 
@@ -154,8 +168,20 @@ def sync_progress():
                 "current_xp": user_sekarang.total_xp if user_sekarang else 0,
                 "level": new_level,
                 "level_up": level_up,
-                "new_badges_unlocked": badge_baru_didapat
+                "new_badges_unlocked": badge_baru_didapat,
+                "new_milestones_unlocked": [r.reward_key for r in milestone_baru]
             }), 200
+
+    return jsonify({
+        "message": "Progress tersimpan di server",
+        "xp_added": xp_added,
+        "current_xp": user_sekarang.total_xp if user_sekarang else 0,
+        "level": new_level,
+        "level_up": level_up,
+        "new_badges_unlocked": badge_baru_didapat,
+        "new_milestones_unlocked": [r.reward_key for r in milestone_baru]
+    }), 200
+
 # 2. AMBIL SEMUA PROGRESS USER
 @gamification_bp.route('/sync/all-progress', methods=['GET'])
 @jwt_required()
@@ -181,7 +207,8 @@ def add_xp():
 
     user = db.session.get(User, current_user_id)
     if user:
-        # Hitung level sebelum ditambah XP (Kelipatan 200)
+        # Level legacy tetap dipertahankan untuk screen lama.
+        old_xp = int(user.total_xp or 0)
         old_level = (user.total_xp // 200) + 1
         
         user.total_xp += int(amount)
@@ -197,12 +224,19 @@ def add_xp():
                 message=f"Keren banget! Sekarang kamu naik ke Level {new_level}. Tingkatkan terus belajarmu, ya!"
             )
             db.session.add(new_notif)
+
+        milestone_baru = sync_user_milestones(
+            user,
+            previous_xp=old_xp,
+            notify_new=True,
+        )
             
         db.session.commit()
         return jsonify({
             "message": "XP bertambah", 
             "current_xp": user.total_xp,
-            "level": new_level
+            "level": new_level,
+            "new_milestones_unlocked": [r.reward_key for r in milestone_baru]
         }), 200
     return jsonify({"error": "User tidak ditemukan"}), 404
 
@@ -242,7 +276,48 @@ def get_user_data():
     return jsonify({"error": "User tidak ditemukan"}), 404
 
 
-# 5. UNLOCK MANUAl BADGE
+# 5. MILESTONE & KOLEKSI — SOURCE OF TRUTH DI BACKEND
+@gamification_bp.route('/milestones', methods=['GET'])
+@jwt_required()
+def get_milestones():
+    current_user_id = get_jwt_identity()
+    user = db.session.get(User, current_user_id)
+
+    if not user:
+        return jsonify({"error": "User tidak ditemukan"}), 404
+
+    # Backfill akun lama berdasarkan XP yang sudah ada, tanpa notifikasi historis.
+    sync_user_milestones(user, previous_xp=None, notify_new=False)
+    db.session.commit()
+
+    return jsonify(serialize_milestone_state(user)), 200
+
+
+@gamification_bp.route('/milestones/frame', methods=['PUT'])
+@jwt_required()
+def update_milestone_frame():
+    current_user_id = get_jwt_identity()
+    user = db.session.get(User, current_user_id)
+
+    if not user:
+        return jsonify({"error": "User tidak ditemukan"}), 404
+
+    data = request.get_json() or {}
+    reward_key = data.get('reward_key') or data.get('reward_id') or ''
+
+    success, error = equip_user_frame(user, reward_key)
+    if not success:
+        db.session.rollback()
+        return jsonify({"error": error or "Gagal menggunakan bingkai"}), 400
+
+    db.session.commit()
+    return jsonify({
+        "message": "Bingkai profil diperbarui",
+        "milestone": serialize_milestone_state(user)
+    }), 200
+
+
+# 6. UNLOCK MANUAL BADGE (LEGACY)
 @gamification_bp.route('/gamification/badge', methods=['POST'])
 @jwt_required()
 def unlock_badge():
@@ -341,6 +416,7 @@ def submit_quiz():
     QUIZ_XP = 40
     xp_added = 0
 
+    old_xp = int(user.total_xp or 0)
     old_level = (user.total_xp // 200) + 1
 
     # XP cuma sekali per materi kuis
@@ -360,6 +436,12 @@ def submit_quiz():
             title="Hore! Level Naik! 🚀",
             message=f"Keren banget! Sekarang kamu naik ke Level {new_level}!"
         ))
+
+    milestone_baru = sync_user_milestones(
+        user,
+        previous_xp=old_xp,
+        notify_new=xp_added > 0,
+    )
 
     badge_baru_didapat = []
 
@@ -389,7 +471,8 @@ def submit_quiz():
         "level": new_level,
         "level_up": level_up,
         "is_first_quiz_completion": not was_quiz_completed,
-        "new_badges_unlocked": badge_baru_didapat
+        "new_badges_unlocked": badge_baru_didapat,
+        "new_milestones_unlocked": [r.reward_key for r in milestone_baru]
     }), 200
 
 # ==========================================
@@ -495,6 +578,7 @@ def complete_lab():
     LAB_XP = 100
     xp_added = 0
 
+    old_xp = int(user.total_xp or 0)
     old_level = (user.total_xp // 200) + 1
 
     user.daily_status = 'active'
@@ -515,6 +599,12 @@ def complete_lab():
                 title="Hore! Level Naik! 🚀",
                 message=f"Keren banget! Sekarang kamu naik ke Level {new_level}!"
             ))
+
+    milestone_baru = sync_user_milestones(
+        user,
+        previous_xp=old_xp,
+        notify_new=xp_added > 0,
+    )
 
     db.session.flush()
 
@@ -547,7 +637,8 @@ def complete_lab():
         "level": new_level,
         "level_up": level_up,
         "lab_completed": True,
-        "new_badges_unlocked": badge_baru_didapat
+        "new_badges_unlocked": badge_baru_didapat,
+        "new_milestones_unlocked": [r.reward_key for r in milestone_baru]
     }), 200
 
 @gamification_bp.route('/lab/result/save', methods=['POST'])
