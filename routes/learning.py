@@ -1897,6 +1897,71 @@ def complete_learning_mode(submaterial_id):
 
 
 # =========================================================
+# SUBMATERIAL TTS AUDIO (EDGE NEURAL TTS)
+# =========================================================
+
+@learning_bp.route(
+    "/submaterial/<int:submaterial_id>/tts-audio",
+    methods=["GET", "POST"],
+)
+@jwt_required(optional=True)
+def get_submaterial_tts_audio(submaterial_id):
+    submaterial, material = get_submaterial_and_material(submaterial_id)
+    if not submaterial:
+        return jsonify({
+            "success": False,
+            "error": "Submateri tidak ditemukan",
+        }), 404
+
+    if submaterial.audio_url and submaterial.audio_url.strip():
+        return jsonify({
+            "success": True,
+            "audio_url": submaterial.audio_url,
+            "source": "uploaded_audio",
+            "voice": "custom",
+            "title": submaterial.title,
+        }), 200
+
+    text_to_narrate = (
+        submaterial.tts_text
+        or submaterial.read_content
+        or submaterial.title
+        or ""
+    ).strip()
+
+    if not text_to_narrate:
+        return jsonify({
+            "success": False,
+            "error": "Teks submateri kosong",
+        }), 400
+
+    try:
+        from services.tts_service import generate_submaterial_tts, DEFAULT_VOICE
+        from flask import current_app
+
+        upload_folder = current_app.config.get("UPLOAD_FOLDER", "uploads")
+        audio_rel_url = generate_submaterial_tts(
+            submaterial_id=submaterial_id,
+            text=text_to_narrate,
+            upload_folder=upload_folder,
+            voice=DEFAULT_VOICE,
+        )
+
+        return jsonify({
+            "success": True,
+            "audio_url": audio_rel_url,
+            "source": "neural_tts",
+            "voice": DEFAULT_VOICE,
+            "title": submaterial.title,
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Gagal membuat audio TTS: {str(e)}",
+        }), 500
+
+
+# =========================================================
 # SUBMIT CHECKPOINT
 # =========================================================
 
