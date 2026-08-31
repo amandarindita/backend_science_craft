@@ -1,5 +1,14 @@
 from datetime import timedelta
 import os
+import sys
+
+# Ensure UTF-8 output on Windows terminal
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 from flask import Flask, jsonify, send_from_directory, redirect, url_for
 from flask_migrate import Migrate
@@ -143,4 +152,13 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=5000,
         debug=True,
+        exclude_patterns=[
+            "*chroma_db*",
+            "*uploads*",
+            "*.db*",
+            "*.sqlite3*",
+            "*.sqlite3-journal",
+            "*.sqlite3-wal",
+            "*.sqlite3-shm",
+        ],
     )

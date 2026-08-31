@@ -74,9 +74,11 @@
             <p class="text-sm text-slate-500 mt-1">Kelola cadangan API Key Gemini dan ElevenLabs dengan failover otomatis saat limit.</p>
         </div>
         <div class="flex items-center space-x-3">
-            <button onclick="fetchKeys()"
-                    class="inline-flex items-center space-x-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-4 py-2.5 rounded-xl shadow-sm transition-all">
-                <i data-lucide="refresh-cw" id="refresh-icon" class="w-4 h-4"></i>
+            <button onclick="fetchKeys(true)"
+                    class="inline-flex items-center space-x-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-4 py-2.5 rounded-xl shadow-sm transition-all active:scale-95">
+                <span id="refresh-icon-wrapper" class="inline-flex items-center">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                </span>
                 <span>Refresh Data</span>
             </button>
             <button onclick="openAddModal()"
@@ -153,8 +155,8 @@
                 </button>
             </div>
             <div class="text-xs text-slate-500 flex items-center space-x-2">
-                <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Auto-failover: Least-Used & Round-Robin</span>
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Auto-failover: Least-Used &amp; Round-Robin</span>
             </div>
         </div>
 
@@ -361,9 +363,11 @@
         lucide.createIcons();
     }
 
-    async function fetchKeys() {
-        const refreshIcon = document.getElementById('refresh-icon');
-        refreshIcon.classList.add('animate-spin');
+    async function fetchKeys(isManual = false) {
+        const wrapper = document.getElementById('refresh-icon-wrapper');
+        if (isManual && wrapper) {
+            wrapper.classList.add('animate-spin');
+        }
 
         try {
             const res = await fetch("{{ url_for('admin_web.get_all_keys') }}");
@@ -384,13 +388,22 @@
 
                 renderTable('gemini', data.gemini_keys);
                 renderTable('elevenlabs', data.elevenlabs_keys);
+
+                if (isManual) {
+                    showToast("Data API Key berhasil diperbarui", "success");
+                }
             } else {
                 showToast(data.error || "Gagal mengambil data keys", "error");
             }
         } catch (e) {
             showToast("Terjadi kesalahan jaringan", "error");
         } finally {
-            setTimeout(() => refreshIcon.classList.remove('animate-spin'), 400);
+            if (isManual) {
+                setTimeout(() => {
+                    const el = document.getElementById('refresh-icon-wrapper');
+                    if (el) el.classList.remove('animate-spin');
+                }, 450);
+            }
         }
     }
 
@@ -428,8 +441,18 @@
                 statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800">Invalid</span>`;
             }
 
-            const errorNote = (k.status !== 'active' && k.last_error_message) ? `<p class="text-[10px] text-rose-500 truncate max-w-xs mt-0.5" title="${k.last_error_message}">${k.last_error_message}</p>` : '';
-            const cooldownNote = (k.status === 'rate_limited' && k.cooldown_until) ? `<p class="text-[10px] text-amber-600 font-medium">Until: ${k.cooldown_until}</p>` : '';
+            let noteClass = 'text-slate-500';
+            if (k.status === 'active') {
+                noteClass = 'text-emerald-600 font-medium';
+            } else if (k.status === 'rate_limited') {
+                noteClass = 'text-amber-600 font-medium';
+            } else if (k.status === 'quota_exhausted' || k.status === 'invalid') {
+                noteClass = 'text-rose-500 font-medium';
+            }
+
+            const errorNote = k.last_error_message ? `<p class="text-[10px] ${noteClass} truncate max-w-xs mt-0.5" title="${k.last_error_message}">${k.last_error_message}</p>` : '';
+            const cooldownNote = (k.status === 'rate_limited' && k.cooldown_until) ? `<p class="text-[10px] text-amber-600 font-medium">Until: ${k.cooldown_until}</p>` :
+                                 (k.status === 'quota_exhausted' && k.cooldown_until) ? `<p class="text-[10px] text-rose-500 font-medium">Reset: ${k.cooldown_until}</p>` : '';
 
             return `
                 <tr class="hover:bg-slate-50/80 transition-colors">
@@ -600,7 +623,7 @@
         const submitBtn = document.getElementById('btn-submit-key');
 
         submitBtn.disabled = true;
-        submitBtn.innerHTML = `<span>Menyimpan...</span>`;
+        submitBtn.innerHTML = `<span>Memverifikasi & Menyimpan...</span>`;
 
         const voice_id = document.getElementById('input-voice-id').value.trim();
 
@@ -670,7 +693,7 @@
         const submitBtn = document.getElementById('btn-submit-edit');
 
         submitBtn.disabled = true;
-        submitBtn.innerHTML = `<span>Menyimpan...</span>`;
+        submitBtn.innerHTML = `<span>Memverifikasi & Menyimpan...</span>`;
 
         try {
             const res = await fetch(`/admin/web/api/keys/${keyId}`, {
@@ -695,7 +718,7 @@
         }
     }
 
-    // Init fetch
+    // Init fetch (Manual via Tombol Refresh Data)
     document.addEventListener('DOMContentLoaded', () => {
         fetchKeys();
     });

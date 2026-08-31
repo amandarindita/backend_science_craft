@@ -8,7 +8,7 @@ client = ElevenLabs(
 
 # Generate audio
 audio_stream = client.text_to_speech.convert(
-    text="Pernah dengar tentang enzim? Jadi, enzim itu adalah biokatalis, yang mempercepat reaksi kimia di tubuh kita tanpa ikut habis. Bagian proteinnya, disebut apoenzim. Nah, sebagian enzim juga butuh bantuan tambahan nih, seperti kofaktor dari ion anorganik, atau koenzim dari molekul organik. Ketika apoenzim bergabung dengan komponen pendukungnya dan siap aktif, bagian utuh inilah yang kita sebut... holoenzim.",
+    text="Per",
     voice_id="4UNmeS5ijruDobVfcjih",  # Ganti dengan Voice ID pilihanmu
     model_id="eleven_multilingual_v2",  # Model terbaik untuk multi-bahasa
     voice_settings=VoiceSettings(

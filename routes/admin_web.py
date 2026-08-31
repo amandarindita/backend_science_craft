@@ -45,7 +45,15 @@ def format_time_wib(dt):
         return None
     try:
         wib_dt = dt + timedelta(hours=7)
-        return f"{wib_dt.strftime('%H:%M:%S')} WIB"
+        now_wib = datetime.utcnow() + timedelta(hours=7)
+        if wib_dt.date() == now_wib.date():
+            return f"{wib_dt.strftime('%H:%M:%S')} WIB"
+        elif wib_dt.date() == (now_wib + timedelta(days=1)).date():
+            return f"Besok, {wib_dt.strftime('%H:%M')} WIB"
+        else:
+            months = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+            month_name = months[wib_dt.month] if 1 <= wib_dt.month <= 12 else str(wib_dt.month)
+            return f"{wib_dt.day} {month_name}, {wib_dt.strftime('%H:%M')} WIB"
     except Exception:
         return str(dt)
 
@@ -156,10 +164,11 @@ def users_dashboard():
 def get_all_keys():
     try:
         now = datetime.utcnow()
-        # Auto-restore key yang masa cooldown-nya sudah selesai
+        # Auto-restore key yang masa cooldown atau masa reset kuotanya sudah selesai
         cooling_keys = db.session.scalars(
             db.select(ApiKey).filter(
-                ApiKey.status == "rate_limited",
+                ApiKey.status.in_(["rate_limited", "quota_exhausted"]),
+                ApiKey.cooldown_until.is_not(None),
                 ApiKey.cooldown_until <= now
             )
         ).all()
@@ -170,33 +179,39 @@ def get_all_keys():
                 k.last_error_message = None
             db.session.commit()
 
-        keys = db.session.scalars(db.select(ApiKey).order_by(ApiKey.created_at.desc())).all()
-        
-        gemini_keys = []
-        for k in keys:
-            if k.provider == "gemini":
-                d = k.to_dict(include_key=False)
-                d["last_used_at"] = format_indo_datetime(k.last_used_at)
-                d["created_at"] = format_indo_datetime(k.created_at)
-                d["cooldown_until"] = format_time_wib(k.cooldown_until)
-                gemini_keys.append(d)
+        all_keys = db.session.scalars(
+            db.select(ApiKey).order_by(ApiKey.provider.asc(), ApiKey.id.asc())
+        ).all()
 
+        gemini_keys = []
         elevenlabs_keys = []
-        for k in keys:
-            if k.provider == "elevenlabs":
-                d = k.to_dict(include_key=False)
-                d["last_used_at"] = format_indo_datetime(k.last_used_at)
-                d["created_at"] = format_indo_datetime(k.created_at)
-                d["cooldown_until"] = format_time_wib(k.cooldown_until)
-                elevenlabs_keys.append(d)
+        gemini_active = 0
+        elevenlabs_active = 0
+        total_requests = 0
+
+        for k in all_keys:
+            data = k.to_dict(include_key=False)
+            data["cooldown_until"] = format_time_wib(k.cooldown_until) if k.cooldown_until else None
+            data["last_used_at"] = format_time_wib(k.last_used_at) if k.last_used_at else None
+
+            if k.provider == "gemini":
+                gemini_keys.append(data)
+                if k.is_active and k.status == "active":
+                    gemini_active += 1
+            elif k.provider == "elevenlabs":
+                elevenlabs_keys.append(data)
+                if k.is_active and k.status == "active":
+                    elevenlabs_active += 1
+
+            total_requests += (k.usage_count or 0)
 
         stats = {
-            "total_keys": len(keys),
+            "total_keys": len(all_keys),
             "gemini_total": len(gemini_keys),
-            "gemini_active": len([k for k in gemini_keys if k["is_active"] and k["status"] == "active"]),
+            "gemini_active": gemini_active,
             "elevenlabs_total": len(elevenlabs_keys),
-            "elevenlabs_active": len([k for k in elevenlabs_keys if k["is_active"] and k["status"] == "active"]),
-            "total_requests": sum(k.usage_count for k in keys),
+            "elevenlabs_active": elevenlabs_active,
+            "total_requests": total_requests,
         }
 
         return jsonify({
@@ -207,6 +222,55 @@ def get_all_keys():
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+def validate_and_apply_key_status(key: ApiKey):
+    """Menguji status live API Key ke provider dan menetapkan status serta estimasi waktu reset."""
+    try:
+        reset_time_dt = None
+        if key.provider == "gemini":
+            is_valid, msg = KeyRotator.test_gemini_key(key.key_value)
+            # Estimasi reset kuota harian Gemini: Pukul 00:00 UTC (07:00 WIB besok)
+            now_utc = datetime.utcnow()
+            reset_time_dt = (now_utc + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        elif key.provider == "elevenlabs":
+            is_valid, msg, reset_unix = KeyRotator.test_elevenlabs_key(key.key_value)
+            if reset_unix:
+                reset_time_dt = datetime.utcfromtimestamp(reset_unix)
+        else:
+            is_valid, msg = False, "Provider tidak dikenal."
+
+        if is_valid:
+            key.status = "active"
+            key.is_active = True
+            key.cooldown_until = None
+            key.last_error_message = msg[:500] if (msg and key.provider == "elevenlabs") else None
+        else:
+            key.last_error_message = msg[:500]
+            msg_lower = msg.lower()
+            if "kuota" in msg_lower or "quota" in msg_lower or "credit" in msg_lower:
+                key.status = "quota_exhausted"
+                key.cooldown_until = reset_time_dt
+                key.is_active = True
+            elif "429" in msg_lower or "rate limit" in msg_lower:
+                key.status = "rate_limited"
+                key.cooldown_until = datetime.utcnow() + timedelta(seconds=120)
+                key.is_active = True
+            elif "invalid" in msg_lower or "401" in msg_lower or "403" in msg_lower or "permission" in msg_lower:
+                key.status = "invalid"
+                key.is_active = False
+                key.cooldown_until = None
+            else:
+                key.status = "invalid"
+                key.is_active = False
+                key.cooldown_until = None
+        return is_valid, msg
+    except Exception as e:
+        key.status = "invalid"
+        key.is_active = False
+        key.cooldown_until = None
+        key.last_error_message = f"Gagal validasi: {str(e)[:100]}"
+        return False, str(e)
 
 
 @admin_web_bp.route("/api/keys", methods=["POST"])
@@ -241,6 +305,10 @@ def add_new_key():
             is_active=True,
             status="active"
         )
+        
+        # Validasi otomatis ke provider langsung saat key ditambahkan
+        is_valid, msg = validate_and_apply_key_status(new_key)
+        
         db.session.add(new_key)
         db.session.commit()
 
@@ -248,6 +316,7 @@ def add_new_key():
             "success": True,
             "message": f"API Key {provider.upper()} ({label}) berhasil ditambahkan!",
             "key": new_key.to_dict(include_key=False),
+            "test_message": msg,
         })
     except Exception as e:
         db.session.rollback()
@@ -324,31 +393,7 @@ def test_single_key(key_id):
                 "cooldown_until": time_wib,
             }), 200
 
-        if key.provider == "gemini":
-            is_valid, msg = KeyRotator.test_gemini_key(key.key_value)
-        elif key.provider == "elevenlabs":
-            is_valid, msg = KeyRotator.test_elevenlabs_key(key.key_value)
-        else:
-            return jsonify({"success": False, "error": "Provider tidak dikenal."}), 400
-
-        if is_valid:
-            key.status = "active"
-            key.cooldown_until = None
-            key.last_error_message = None
-        else:
-            key.last_error_message = msg[:500]
-            msg_lower = msg.lower()
-            if "daily quota" in msg_lower or "kuota harian" in msg_lower or "habis total" in msg_lower or "quota exhausted" in msg_lower:
-                key.status = "quota_exhausted"
-                key.cooldown_until = None
-            elif "429" in msg_lower or "rate limit" in msg_lower:
-                key.status = "rate_limited"
-                key.cooldown_until = datetime.utcnow() + timedelta(seconds=120)
-            elif "invalid" in msg_lower or "401" in msg_lower or "403" in msg_lower or "permission" in msg_lower:
-                key.status = "invalid"
-                key.is_active = False
-            else:
-                key.status = "invalid"
+        is_valid, msg = validate_and_apply_key_status(key)
         db.session.commit()
 
         return jsonify({
@@ -381,20 +426,19 @@ def update_key(key_id):
             if len(key_value) < 10:
                 return jsonify({"success": False, "error": "API Key baru terlalu pendek."}), 400
             key.key_value = key_value
-            # Reset error status when key is replaced
-            key.status = "active"
-            key.last_error_message = None
-            key.cooldown_until = None
 
         if key.provider == "elevenlabs":
             key.voice_id = voice_id if voice_id else None
 
+        # Uji status live secara otomatis di background setelah update
+        is_valid, msg = validate_and_apply_key_status(key)
         db.session.commit()
 
         return jsonify({
             "success": True,
             "message": f"API Key '{key.label}' berhasil diperbarui!",
             "key": key.to_dict(include_key=False),
+            "test_message": msg,
         })
     except Exception as e:
         db.session.rollback()

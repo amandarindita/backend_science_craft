@@ -57,12 +57,15 @@ def get_vector_db():
     return vector_db
 
 def ask_cheerful_scibot(question):
-    db = get_vector_db()
     context = ''
-    if db:
-        retriever = db.as_retriever(search_kwargs={'k': 3}) 
-        docs = retriever.invoke(question)
-        context = '\n'.join([d.page_content for d in docs])
+    try:
+        db = get_vector_db()
+        if db:
+            retriever = db.as_retriever(search_kwargs={'k': 3}) 
+            docs = retriever.invoke(question)
+            context = '\n'.join([d.page_content for d in docs])
+    except Exception as e:
+        print(f'[RAG Warning] Gagal query retriever: {e}. Melanjutkan tanpa konteks.')
     
     prompt = (
         "Kamu adalah SENA (Science Education Navigator Assistant), "
@@ -79,9 +82,10 @@ def ask_cheerful_scibot(question):
     return KeyRotator.call_gemini_rotator('gemini-2.5-flash', _call)
 
 @chatbot_bp.route('', methods=['POST'])
+@chatbot_bp.route('/', methods=['POST'])
 def chat_gemini():
-    data = request.get_json()
-    user_message = data.get('message', '')
+    data = request.get_json(silent=True) or {}
+    user_message = data.get('message', '').strip()
     
     if not user_message: 
         return jsonify({'error': 'Pesan tidak boleh kosong'}), 400

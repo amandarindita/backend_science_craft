@@ -187,8 +187,8 @@ class KeyRotator:
             model = genai.GenerativeModel("gemini-2.5-flash")
             response = model.generate_content("Balas kata 'PONG' saja.")
             if response and response.text:
-                return True, f"Sukses! Respon Gemini: {response.text.strip()}"
-            return True, "Sukses terhubung ke Gemini API."
+                return True, ""
+            return True, ""
         except Exception as e:
             err_str = str(e)
             err_lower = err_str.lower()
@@ -196,15 +196,15 @@ class KeyRotator:
                 return False, "Error 429: Kuota harian (Daily Quota) habis untuk hari ini."
             elif "429" in err_str or "resource_exhausted" in err_lower or "rate limit" in err_lower:
                 return False, "Error 429: Rate limit RPM (terlalu banyak request/menit)."
-            elif "api_key_invalid" in err_lower or "400" in err_str or "403" in err_str:
-                return False, "Error: API Key tidak valid atau izin ditolak."
-            return False, f"Error: {err_str[:120]}"
+            elif "api_key_invalid" in err_lower or "invalid_argument" in err_lower or "400" in err_str or "403" in err_str or "api key not valid" in err_lower:
+                return False, "Error: API Key Gemini salah atau tidak valid."
+            return False, f"Error: {err_str[:80]}"
 
     @classmethod
-    def test_elevenlabs_key(cls, key_value: str) -> tuple[bool, str]:
-        """Test langsung keaslian dan status API Key ElevenLabs."""
+    def test_elevenlabs_key(cls, key_value: str) -> tuple[bool, str, int | None]:
+        """Test langsung keaslian dan status API Key ElevenLabs beserta estimasi waktu reset kuota."""
         if not key_value or len(key_value.strip()) < 10:
-            return False, "API Key terlalu pendek atau kosong."
+            return False, "API Key terlalu pendek atau kosong.", None
 
         try:
             url = "https://api.elevenlabs.io/v1/user/subscription"
@@ -216,24 +216,36 @@ class KeyRotator:
                 char_count = data.get("character_count", 0)
                 char_limit = data.get("character_limit", 0)
                 tier = data.get("tier", "free")
+                reset_unix = data.get("next_character_count_reset_unix")
                 remaining = max(0, char_limit - char_count)
                 if char_limit > 0 and char_count >= char_limit:
-                    return False, f"Error: Kuota karakter bulanan habis ({char_count:,}/{char_limit:,})."
-                return True, f"Sukses! Tier: {tier.upper()} | Sisa Kuota: {remaining:,} / {char_limit:,} karakter."
+                    return False, f"Error: Kuota karakter bulanan habis ({char_count:,}/{char_limit:,}).", reset_unix
+                return True, f"Sisa Kuota: {remaining:,} / {char_limit:,} karakter ({tier.upper()})", reset_unix
 
-            # Penanganan khusus Restricted / Fine-Grained API Key
-            if res.status_code == 401:
+            # Penanganan khusus Restricted / Fine-Grained API Key & Error Codes
+            if res.status_code in (400, 401):
                 try:
                     err_json = res.json()
                     detail = err_json.get("detail", {})
-                    if detail.get("status") == "missing_permissions":
-                        return True, "Sukses! API Key valid & aktif (Restricted TTS Scope)."
+                    if isinstance(detail, dict):
+                        if detail.get("status") == "missing_permissions":
+                            return True, "Sukses! API Key valid & aktif (Restricted TTS Scope).", None
+                        code = detail.get("code", "")
+                        msg = detail.get("message", "")
+                        if code == "invalid_api_key" or "invalid" in msg.lower() or "must be exactly" in msg.lower():
+                            return False, "Error: API Key ElevenLabs salah atau tidak valid.", None
+                        if "quota" in msg.lower() or "credit" in msg.lower():
+                            return False, "Error: Kuota karakter ElevenLabs habis.", None
                 except Exception:
                     pass
-                return False, "Error 401: API Key ElevenLabs tidak valid."
+                return False, "Error: API Key ElevenLabs salah atau tidak valid.", None
+            elif res.status_code == 403:
+                return False, "Error 403: Akses ditolak oleh ElevenLabs.", None
             elif res.status_code == 429:
-                return False, "Error 429: Rate limit request sementara (terlalu cepat)."
+                return False, "Error 429: Rate limit request sementara (terlalu cepat).", None
+            elif res.status_code >= 500:
+                return False, "Error 500: Server ElevenLabs sedang gangguan/down.", None
             else:
-                return False, f"ElevenLabs Error {res.status_code}: {res.text[:100]}"
+                return False, "Error: Verifikasi API Key ElevenLabs gagal.", None
         except Exception as e:
-            return False, f"Gagal koneksi ke ElevenLabs: {str(e)[:100]}"
+            return False, f"Gagal koneksi ke ElevenLabs: {str(e)[:80]}", None
