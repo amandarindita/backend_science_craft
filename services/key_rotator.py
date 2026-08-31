@@ -81,7 +81,14 @@ class KeyRotator:
             key = db.session.get(ApiKey, key_id)
             if key:
                 key.status = "quota_exhausted"
-                key.last_error_message = (error_message or "Quota exhausted")[:500]
+                
+                if key.provider == "gemini":
+                    key.last_error_message = "Error 429: Kuota harian (Daily Quota) habis untuk hari ini."
+                    now_utc = datetime.utcnow()
+                    key.cooldown_until = (now_utc + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                else:
+                    key.last_error_message = (error_message or "Quota exhausted")[:500]
+                    
                 db.session.commit()
                 logger.warning(f"[KeyRotator] Key ID {key_id} ({key.label}) ditandai quota_exhausted.")
         except Exception as e:

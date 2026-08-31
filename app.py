@@ -152,13 +152,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=5000,
         debug=True,
-        exclude_patterns=[
-            "*chroma_db*",
-            "*uploads*",
-            "*.db*",
-            "*.sqlite3*",
-            "*.sqlite3-journal",
-            "*.sqlite3-wal",
-            "*.sqlite3-shm",
-        ],
+        use_reloader=False, # Matikan auto-reload agar ChromaDB/Uploads tidak memicu restart
     )
