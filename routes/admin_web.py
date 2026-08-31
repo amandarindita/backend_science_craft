@@ -201,9 +201,12 @@ def add_new_key():
         if existing:
             return jsonify({"success": False, "error": "API Key ini sudah terdaftar di sistem."}), 400
 
+        voice_id = data.get("voice_id", "").strip() if provider == "elevenlabs" else None
+
         new_key = ApiKey(
             provider=provider,
             key_value=key_value,
+            voice_id=voice_id,
             label=label,
             is_active=True,
             status="active"
@@ -293,6 +296,46 @@ def test_single_key(key_id):
             "success": is_valid,
             "message": msg,
             "status": key.status,
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_web_bp.route("/api/keys/<int:key_id>", methods=["PUT", "POST"])
+@superadmin_required
+def update_key(key_id):
+    try:
+        key = db.session.get(ApiKey, key_id)
+        if not key:
+            return jsonify({"success": False, "error": "API Key tidak ditemukan."}), 404
+
+        data = request.get_json() or {}
+        label = data.get("label", "").strip()
+        key_value = data.get("key_value", "").strip()
+        voice_id = data.get("voice_id", "").strip()
+
+        if label:
+            key.label = label
+
+        if key_value:
+            if len(key_value) < 10:
+                return jsonify({"success": False, "error": "API Key baru terlalu pendek."}), 400
+            key.key_value = key_value
+            # Reset error status when key is replaced
+            key.status = "active"
+            key.last_error_message = None
+            key.cooldown_until = None
+
+        if key.provider == "elevenlabs":
+            key.voice_id = voice_id if voice_id else None
+
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": f"API Key '{key.label}' berhasil diperbarui!",
+            "key": key.to_dict(include_key=False),
         })
     except Exception as e:
         db.session.rollback()

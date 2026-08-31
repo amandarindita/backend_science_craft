@@ -106,8 +106,10 @@ def generate_submaterial_tts(
                     success = ok
 
             for key_obj in active_keys:
-                print(f"[TTS] Mencoba ElevenLabs dengan Key ID {key_obj.id} ({key_obj.label})...")
-                ok, code, err = _generate_elevenlabs_audio(cleaned, filepath, api_key=key_obj.key_value, voice_id=voice_id, model_id=model_id)
+                # Prioritaskan Voice ID milik Key akun tersebut, fallback ke default voice_id
+                target_voice_id = (key_obj.voice_id.strip() if getattr(key_obj, "voice_id", None) and key_obj.voice_id.strip() else None) or voice_id
+                print(f"[TTS] Mencoba ElevenLabs dengan Key ID {key_obj.id} ({key_obj.label}) | Voice ID: {target_voice_id}...")
+                ok, code, err = _generate_elevenlabs_audio(cleaned, filepath, api_key=key_obj.key_value, voice_id=target_voice_id, model_id=model_id)
                 if ok:
                     KeyRotator.mark_success(key_obj.id)
                     print(f"[TTS] Sukses generate dengan ElevenLabs Key ID {key_obj.id}: {filename}")

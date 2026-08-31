@@ -1233,6 +1233,10 @@ class ApiKey(db.Model):
         db.String(255),
         nullable=False,
     )
+    voice_id = db.Column(
+        db.String(100),
+        nullable=True,
+    )
     label = db.Column(
         db.String(100),
         nullable=False,
@@ -1281,6 +1285,7 @@ class ApiKey(db.Model):
             "id": self.id,
             "provider": self.provider,
             "key_value": self.key_value if include_key else self.mask_key(),
+            "voice_id": self.voice_id,
             "label": self.label,
             "is_active": self.is_active,
             "status": self.status,
