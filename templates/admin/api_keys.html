@@ -1,0 +1,502 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Dashboard API Key Pool - Science Craft Superadmin{% endblock %}
+
+{% block content %}
+<!-- Top Navigation -->
+<nav class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+            <!-- Brand -->
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20">
+                    <i data-lucide="cpu" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <span class="font-bold text-slate-900 text-base">Science Craft</span>
+                    <span class="text-xs bg-sky-100 text-sky-800 font-semibold px-2 py-0.5 rounded-full ml-1.5 uppercase tracking-wider">Superadmin</span>
+                </div>
+            </div>
+
+            <!-- User Menu -->
+            <div class="flex items-center space-x-4">
+                <div class="text-right hidden sm:block">
+                    <p class="text-xs font-semibold text-slate-900">{{ username }}</p>
+                    <p class="text-[11px] text-slate-500 capitalize">{{ role }}</p>
+                </div>
+                <div class="h-8 w-[1px] bg-slate-200 hidden sm:block"></div>
+                <a href="{{ url_for('admin_web.logout') }}"
+                   class="inline-flex items-center space-x-1.5 text-xs font-medium text-slate-600 hover:text-rose-600 py-2 px-3 rounded-lg hover:bg-rose-50 transition-colors">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                    <span>Logout</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<!-- Main Container -->
+<main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    
+    <!-- Hero / Header Section -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-900 tracking-tight">API Key Pool & Rotation Manager</h1>
+            <p class="text-sm text-slate-500 mt-1">Kelola cadangan API Key Gemini dan ElevenLabs dengan failover otomatis saat limit.</p>
+        </div>
+        <div class="flex items-center space-x-3">
+            <button onclick="fetchKeys()"
+                    class="inline-flex items-center space-x-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-4 py-2.5 rounded-xl shadow-sm transition-all">
+                <i data-lucide="refresh-cw" id="refresh-icon" class="w-4 h-4"></i>
+                <span>Refresh Data</span>
+            </button>
+            <button onclick="openAddModal()"
+                    class="inline-flex items-center space-x-2 text-xs font-semibold text-white bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 px-4 py-2.5 rounded-xl shadow-md shadow-sky-600/20 transition-all">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                <span>Tambah API Key</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Stat Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <!-- Total Keys -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700 flex-shrink-0">
+                <i data-lucide="key" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Pool Keys</p>
+                <h3 id="stat-total" class="text-2xl font-bold text-slate-900 mt-0.5">-</h3>
+            </div>
+        </div>
+
+        <!-- Gemini Active -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-sky-50 flex items-center justify-center text-sky-600 flex-shrink-0">
+                <i data-lucide="sparkles" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Gemini Aktif</p>
+                <h3 id="stat-gemini" class="text-2xl font-bold text-sky-600 mt-0.5">-</h3>
+            </div>
+        </div>
+
+        <!-- ElevenLabs Active -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 flex-shrink-0">
+                <i data-lucide="mic" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">ElevenLabs Aktif</p>
+                <h3 id="stat-elevenlabs" class="text-2xl font-bold text-indigo-600 mt-0.5">-</h3>
+            </div>
+        </div>
+
+        <!-- Total Requests -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 flex-shrink-0">
+                <i data-lucide="activity" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Request AI</p>
+                <h3 id="stat-requests" class="text-2xl font-bold text-emerald-600 mt-0.5">-</h3>
+            </div>
+        </div>
+    </div>
+
+    <!-- Provider Tabs & Tables -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <!-- Tabs Header -->
+        <div class="border-b border-slate-200 bg-slate-50/50 px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div class="flex space-x-2">
+                <button id="tab-btn-gemini" onclick="switchTab('gemini')"
+                        class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 bg-white text-sky-600 shadow-sm border border-slate-200">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    <span>Google Gemini API</span>
+                    <span id="badge-count-gemini" class="bg-sky-100 text-sky-800 text-[10px] px-2 py-0.5 rounded-full font-bold">0</span>
+                </button>
+                <button id="tab-btn-elevenlabs" onclick="switchTab('elevenlabs')"
+                        class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 text-slate-600 hover:text-slate-900">
+                    <i data-lucide="mic" class="w-4 h-4"></i>
+                    <span>ElevenLabs Voice TTS</span>
+                    <span id="badge-count-elevenlabs" class="bg-slate-200 text-slate-700 text-[10px] px-2 py-0.5 rounded-full font-bold">0</span>
+                </button>
+            </div>
+            <div class="text-xs text-slate-500 flex items-center space-x-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Auto-failover: Least-Used & Round-Robin</span>
+            </div>
+        </div>
+
+        <!-- Gemini Table Content -->
+        <div id="tab-content-gemini" class="p-6">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            <th class="pb-3 px-3">Label / Identitas</th>
+                            <th class="pb-3 px-3">API Key (Masked)</th>
+                            <th class="pb-3 px-3">Status Pool</th>
+                            <th class="pb-3 px-3 text-center">Dipakai</th>
+                            <th class="pb-3 px-3">Terakhir Dipakai</th>
+                            <th class="pb-3 px-3 text-center">Aktifkan</th>
+                            <th class="pb-3 px-3 text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body-gemini" class="divide-y divide-slate-100 text-sm">
+                        <!-- Dynamic items -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ElevenLabs Table Content -->
+        <div id="tab-content-elevenlabs" class="p-6 hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            <th class="pb-3 px-3">Label / Identitas</th>
+                            <th class="pb-3 px-3">API Key (Masked)</th>
+                            <th class="pb-3 px-3">Status Pool</th>
+                            <th class="pb-3 px-3 text-center">Dipakai</th>
+                            <th class="pb-3 px-3">Terakhir Dipakai</th>
+                            <th class="pb-3 px-3 text-center">Aktifkan</th>
+                            <th class="pb-3 px-3 text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body-elevenlabs" class="divide-y divide-slate-100 text-sm">
+                        <!-- Dynamic items -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- MODAL TAMBAH API KEY -->
+<div id="add-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 border border-slate-200 transform transition-all">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+            <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center">
+                    <i data-lucide="key" class="w-4 h-4"></i>
+                </div>
+                <h3 class="font-bold text-slate-900 text-base">Tambah API Key Baru</h3>
+            </div>
+            <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-600">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <form id="form-add-key" onsubmit="submitAddKey(event)" class="mt-5 space-y-4">
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Layanan AI (Provider)</label>
+                <select id="input-provider" required
+                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none text-sm">
+                    <option value="gemini">Google Gemini API</option>
+                    <option value="elevenlabs">ElevenLabs Text-to-Speech</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Label / Nama Akun</label>
+                <input type="text" id="input-label" required placeholder="Misal: Akun Google Tamaran #2"
+                       class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none text-sm">
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">API Key String</label>
+                <input type="text" id="input-key" required placeholder="AIzaSy... atau sk_..."
+                       class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none text-sm font-mono text-xs">
+                <p class="text-[11px] text-slate-400 mt-1">API Key akan disimpan aman di database backend.</p>
+            </div>
+
+            <div class="pt-4 flex justify-end space-x-3">
+                <button type="button" onclick="closeAddModal()"
+                        class="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors">
+                    Batal
+                </button>
+                <button type="submit" id="btn-submit-key"
+                        class="px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700 shadow-md shadow-sky-600/20 transition-all flex items-center space-x-1.5">
+                    <span>Simpan Key</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let globalKeysData = { gemini: [], elevenlabs: [] };
+    let currentTab = 'gemini';
+
+    function switchTab(tab) {
+        currentTab = tab;
+        const btnGemini = document.getElementById('tab-btn-gemini');
+        const btnEleven = document.getElementById('tab-btn-elevenlabs');
+        const contentGemini = document.getElementById('tab-content-gemini');
+        const contentEleven = document.getElementById('tab-content-elevenlabs');
+
+        if (tab === 'gemini') {
+            btnGemini.className = "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 bg-white text-sky-600 shadow-sm border border-slate-200";
+            btnEleven.className = "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 text-slate-600 hover:text-slate-900";
+            contentGemini.classList.remove('hidden');
+            contentEleven.classList.add('hidden');
+        } else {
+            btnEleven.className = "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 bg-white text-indigo-600 shadow-sm border border-slate-200";
+            btnGemini.className = "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 text-slate-600 hover:text-slate-900";
+            contentEleven.classList.remove('hidden');
+            contentGemini.classList.add('hidden');
+        }
+        lucide.createIcons();
+    }
+
+    async function fetchKeys() {
+        const refreshIcon = document.getElementById('refresh-icon');
+        refreshIcon.classList.add('animate-spin');
+
+        try {
+            const res = await fetch("{{ url_for('admin_web.get_all_keys') }}");
+            const data = await res.json();
+
+            if (data.success) {
+                globalKeysData.gemini = data.gemini_keys;
+                globalKeysData.elevenlabs = data.elevenlabs_keys;
+
+                // Update Stats
+                document.getElementById('stat-total').innerText = data.stats.total_keys;
+                document.getElementById('stat-gemini').innerText = `${data.stats.gemini_active} / ${data.stats.gemini_total}`;
+                document.getElementById('stat-elevenlabs').innerText = `${data.stats.elevenlabs_active} / ${data.stats.elevenlabs_total}`;
+                document.getElementById('stat-requests').innerText = data.stats.total_requests.toLocaleString();
+
+                document.getElementById('badge-count-gemini').innerText = data.stats.gemini_total;
+                document.getElementById('badge-count-elevenlabs').innerText = data.stats.elevenlabs_total;
+
+                renderTable('gemini', data.gemini_keys);
+                renderTable('elevenlabs', data.elevenlabs_keys);
+            } else {
+                showToast(data.error || "Gagal mengambil data keys", "error");
+            }
+        } catch (e) {
+            showToast("Terjadi kesalahan jaringan", "error");
+        } finally {
+            setTimeout(() => refreshIcon.classList.remove('animate-spin'), 400);
+        }
+    }
+
+    function renderTable(provider, keys) {
+        const tbody = document.getElementById(`table-body-${provider}`);
+        if (!keys || keys.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="py-8 text-center text-slate-400 text-xs">
+                        Belum ada API Key ${provider.toUpperCase()} yang terdaftar.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = keys.map(k => {
+            // Status Badge
+            let statusBadge = "";
+            if (!k.is_active) {
+                statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">Dinonaktifkan</span>`;
+            } else if (k.status === 'active') {
+                statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>Active
+                </span>`;
+            } else if (k.status === 'rate_limited') {
+                statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800" title="Cooldown: ${k.cooldown_until || '-'}">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5 animate-ping"></span>Rate Limited
+                </span>`;
+            } else if (k.status === 'quota_exhausted') {
+                statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800">
+                    <span class="w-1.5 h-1.5 rounded-full bg-rose-500 mr-1.5"></span>Quota Habis
+                </span>`;
+            } else {
+                statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800">Invalid</span>`;
+            }
+
+            const errorNote = k.last_error_message ? `<p class="text-[10px] text-rose-500 truncate max-w-xs mt-0.5" title="${k.last_error_message}">${k.last_error_message}</p>` : '';
+            const cooldownNote = (k.status === 'rate_limited' && k.cooldown_until) ? `<p class="text-[10px] text-amber-600 font-medium">Until: ${k.cooldown_until.split(' ')[1]}</p>` : '';
+
+            return `
+                <tr class="hover:bg-slate-50/80 transition-colors">
+                    <td class="py-3.5 px-3 font-semibold text-slate-800">
+                        ${k.label}
+                        ${errorNote}
+                    </td>
+                    <td class="py-3.5 px-3 font-mono text-xs text-slate-500">${k.key_value}</td>
+                    <td class="py-3.5 px-3">
+                        ${statusBadge}
+                        ${cooldownNote}
+                    </td>
+                    <td class="py-3.5 px-3 text-center font-bold text-slate-700">${k.usage_count}</td>
+                    <td class="py-3.5 px-3 text-xs text-slate-500">${k.last_used_at || '-'}</td>
+                    <td class="py-3.5 px-3 text-center">
+                        <button onclick="toggleKey(${k.id})" 
+                                class="w-10 h-6 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${k.is_active ? 'bg-emerald-500' : 'bg-slate-300'} inline-flex items-center">
+                            <span class="w-5 h-5 rounded-full bg-white shadow transform transition-transform duration-200 ease-in-out ${k.is_active ? 'translate-x-4' : 'translate-x-0'}"></span>
+                        </button>
+                    </td>
+                    <td class="py-3.5 px-3 text-right space-x-1">
+                        <!-- Test Button -->
+                        <button onclick="testKey(${k.id}, this)" 
+                                title="Test live ping ke provider"
+                                class="p-1.5 rounded-lg text-sky-600 hover:bg-sky-50 border border-sky-200 transition-colors">
+                            <i data-lucide="zap" class="w-4 h-4"></i>
+                        </button>
+
+                        <!-- Reset Cooldown Button (jika rate limited) -->
+                        ${k.status !== 'active' ? `
+                            <button onclick="resetCooldown(${k.id})" 
+                                    title="Reset Status ke Active"
+                                    class="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 border border-amber-200 transition-colors">
+                                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                            </button>
+                        ` : ''}
+
+                        <!-- Delete Button -->
+                        <button onclick="deleteKey(${k.id}, '${k.label}')" 
+                                title="Hapus Key"
+                                class="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 border border-rose-200 transition-colors">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        lucide.createIcons();
+    }
+
+    // TOGGLE ACTIVE
+    async function toggleKey(keyId) {
+        try {
+            const res = await fetch(`/admin/web/api/keys/${keyId}/toggle`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                fetchKeys();
+            } else {
+                showToast(data.error, 'error');
+            }
+        } catch (e) {
+            showToast("Gagal toggle status", 'error');
+        }
+    }
+
+    // RESET COOLDOWN
+    async function resetCooldown(keyId) {
+        try {
+            const res = await fetch(`/admin/web/api/keys/${keyId}/reset-cooldown`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                fetchKeys();
+            } else {
+                showToast(data.error, 'error');
+            }
+        } catch (e) {
+            showToast("Gagal reset cooldown", 'error');
+        }
+    }
+
+    // TEST KEY LIVE
+    async function testKey(keyId, btnElement) {
+        const icon = btnElement.querySelector('i');
+        btnElement.disabled = true;
+        btnElement.classList.add('opacity-50');
+
+        showToast("Sedang menguji koneksi API Key...", "info");
+
+        try {
+            const res = await fetch(`/admin/web/api/keys/${keyId}/test`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+            } else {
+                showToast(data.message || data.error, 'error');
+            }
+            fetchKeys();
+        } catch (e) {
+            showToast("Gagal melakukan tes key", 'error');
+        } finally {
+            btnElement.disabled = false;
+            btnElement.classList.remove('opacity-50');
+        }
+    }
+
+    // DELETE KEY
+    async function deleteKey(keyId, label) {
+        if (!confirm(`Apakah Anda yakin ingin menghapus API Key "${label}"?`)) return;
+
+        try {
+            const res = await fetch(`/admin/web/api/keys/${keyId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                fetchKeys();
+            } else {
+                showToast(data.error, 'error');
+            }
+        } catch (e) {
+            showToast("Gagal menghapus key", 'error');
+        }
+    }
+
+    // MODAL CONTROL
+    function openAddModal() {
+        document.getElementById('input-provider').value = currentTab;
+        document.getElementById('add-modal').classList.remove('hidden');
+    }
+
+    function closeAddModal() {
+        document.getElementById('add-modal').classList.add('hidden');
+        document.getElementById('form-add-key').reset();
+    }
+
+    // SUBMIT NEW KEY
+    async function submitAddKey(e) {
+        e.preventDefault();
+        const provider = document.getElementById('input-provider').value;
+        const label = document.getElementById('input-label').value;
+        const key_value = document.getElementById('input-key').value;
+        const submitBtn = document.getElementById('btn-submit-key');
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span>Menyimpan...</span>`;
+
+        try {
+            const res = await fetch("/admin/web/api/keys", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider, label, key_value })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                showToast(data.message, 'success');
+                closeAddModal();
+                fetchKeys();
+            } else {
+                showToast(data.error || "Gagal menambahkan key", 'error');
+            }
+        } catch (e) {
+            showToast("Terjadi kesalahan sistem", 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `<span>Simpan Key</span>`;
+        }
+    }
+
+    // Init fetch
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchKeys();
+    });
+</script>
+{% endblock %}

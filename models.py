@@ -1215,3 +1215,86 @@ class UserLabResult(db.Model):
         db.DateTime,
         default=datetime.utcnow,
     )
+
+# =========================================================
+# API KEY POOL (GEMINI & ELEVENLABS ROTATION)
+# =========================================================
+
+class ApiKey(db.Model):
+    __tablename__ = "api_key"
+
+    id = db.Column(db.Integer, primary_key=True)
+    provider = db.Column(
+        db.String(50),
+        nullable=False,
+        index=True,
+    )  # 'gemini' | 'elevenlabs'
+    key_value = db.Column(
+        db.String(255),
+        nullable=False,
+    )
+    label = db.Column(
+        db.String(100),
+        nullable=False,
+        default="Default Key",
+    )
+    is_active = db.Column(
+        db.Boolean,
+        default=True,
+        nullable=False,
+    )
+    status = db.Column(
+        db.String(30),
+        default="active",
+        nullable=False,
+    )  # 'active', 'rate_limited', 'quota_exhausted', 'invalid'
+    cooldown_until = db.Column(
+        db.DateTime,
+        nullable=True,
+    )
+    usage_count = db.Column(
+        db.Integer,
+        default=0,
+        nullable=False,
+    )
+    last_used_at = db.Column(
+        db.DateTime,
+        nullable=True,
+    )
+    last_error_message = db.Column(
+        db.Text,
+        nullable=True,
+    )
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    def mask_key(self):
+        if not self.key_value or len(self.key_value) < 8:
+            return "****"
+        return f"{self.key_value[:4]}...{self.key_value[-4:]}"
+
+    def to_dict(self, include_key=False):
+        return {
+            "id": self.id,
+            "provider": self.provider,
+            "key_value": self.key_value if include_key else self.mask_key(),
+            "label": self.label,
+            "is_active": self.is_active,
+            "status": self.status,
+            "cooldown_until": (
+                self.cooldown_until.strftime("%Y-%m-%d %H:%M:%S")
+                if self.cooldown_until
+                else None
+            ),
+            "usage_count": self.usage_count,
+            "last_used_at": (
+                self.last_used_at.strftime("%Y-%m-%d %H:%M:%S")
+                if self.last_used_at
+                else None
+            ),
+            "last_error_message": self.last_error_message,
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+        }

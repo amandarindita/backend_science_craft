@@ -1,7 +1,7 @@
 from datetime import timedelta
 import os
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, redirect, url_for
 from flask_migrate import Migrate
 from dotenv import load_dotenv
 
@@ -12,20 +12,23 @@ from extensions import db, bcrypt, jwt
 from routes.auth import auth_bp
 from routes.gamification import gamification_bp
 from routes.admin import admin_bp
+from routes.admin_web import admin_web_bp
 from routes.chatbot import chatbot_bp
 from routes.daily_quest_routes import daily_quest_bp
 from routes.learning import learning_bp
+
 # Pastikan semua model terbaca oleh migration
 import models
 
 
 # =====================================================
-# LOAD ENV
+# LOAD ENV & INITIALIZE APP
 # =====================================================
 
 load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "science-craft-superadmin-secret-2026")
 
 
 # =====================================================
@@ -98,9 +101,10 @@ migrate = Migrate(app, db)
 app.register_blueprint(auth_bp, url_prefix="/auth")
 app.register_blueprint(gamification_bp)
 app.register_blueprint(admin_bp, url_prefix="/admin")
+app.register_blueprint(admin_web_bp, url_prefix="/admin/web")
 app.register_blueprint(chatbot_bp, url_prefix="/chat")
 app.register_blueprint(daily_quest_bp)
-app.register_blueprint(learning_bp,url_prefix="/learning",)
+app.register_blueprint(learning_bp, url_prefix="/learning")
 
 
 # =====================================================
@@ -110,8 +114,13 @@ app.register_blueprint(learning_bp,url_prefix="/learning",)
 @app.route("/")
 def hello_world():
     return jsonify({
-        "message": "Server Science Craft Siap! (Modular Version 🚀)"
+        "message": "Server Science Craft Siap! (Modular Version with KeyRotator & Superadmin Dashboard)"
     })
+
+
+@app.route("/admin/panel")
+def redirect_to_admin():
+    return redirect(url_for("admin_web.login_page"))
 
 
 @app.route("/uploads/<path:filename>")
