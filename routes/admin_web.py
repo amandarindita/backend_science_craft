@@ -2,8 +2,45 @@ from datetime import datetime
 from functools import wraps
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, session, flash
 from extensions import db, bcrypt
+from sqlalchemy import case
 from models import User, ApiKey
 from services.key_rotator import KeyRotator
+
+# =========================================================
+# HELPER FORMAT TANGGAL & WAKTU (WIB)
+# =========================================================
+
+MONTHS_INDO = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+
+def format_indo_date(d):
+    if not d:
+        return "Belum pernah"
+    try:
+        today = datetime.utcnow().date()
+        target_date = d.date() if isinstance(d, datetime) else d
+        day_str = f"{target_date.day} {MONTHS_INDO[target_date.month - 1]} {target_date.year}"
+        
+        diff = (today - target_date).days
+        if diff == 0:
+            return f"Hari ini ({day_str})"
+        elif diff == 1:
+            return f"Kemarin ({day_str})"
+        else:
+            return day_str
+    except Exception:
+        return str(d)
+
+def format_indo_datetime(dt):
+    if not dt:
+        return "-"
+    try:
+        from datetime import timedelta
+        wib_dt = dt + timedelta(hours=7)
+        month_name = MONTHS_INDO[wib_dt.month - 1]
+        return f"{wib_dt.day} {month_name} {wib_dt.year}, {wib_dt.strftime('%H:%M')} WIB"
+    except Exception:
+        return str(dt)
+
 
 admin_web_bp = Blueprint(
     "admin_web",
@@ -21,7 +58,7 @@ def superadmin_required(f):
         user = db.session.get(User, admin_id)
         if not user or user.role != "superadmin":
             session.clear()
-            flash("Akses Ditolak! Dashboard API Key ini hanya dapat diakses oleh role SUPERADMIN.", "error")
+            flash("Akses Ditolak! Dashboard ini hanya dapat diakses oleh role SUPERADMIN.", "error")
             return redirect(url_for("admin_web.login_page"))
             
         return f(*args, **kwargs)
@@ -48,7 +85,6 @@ def login_page():
             flash("Email atau password tidak valid.", "error")
             return render_template("admin/login.html")
 
-        # STRICT CHECK: Hanya SUPERADMIN yang diizinkan masuk
         if user.role != "superadmin":
             flash(f"Akses Ditolak! Akun Anda memiliki role '{user.role}'. Halaman ini khusus untuk SUPERADMIN (Tim IT/Owner).", "error")
             return render_template("admin/login.html")
@@ -61,7 +97,6 @@ def login_page():
 
         return redirect(url_for("admin_web.api_keys_dashboard"))
 
-    # If already logged in as superadmin, redirect to dashboard
     if session.get("admin_user_id"):
         user = db.session.get(User, session.get("admin_user_id"))
         if user and user.role == "superadmin":
@@ -82,13 +117,25 @@ def logout():
 def api_keys_dashboard():
     return render_template(
         "admin/api_keys.html",
+        active_tab="api_keys",
+        username=session.get("admin_username", "Superadmin"),
+        role=session.get("admin_role", "superadmin"),
+    )
+
+
+@admin_web_bp.route("/users")
+@superadmin_required
+def users_dashboard():
+    return render_template(
+        "admin/users.html",
+        active_tab="users",
         username=session.get("admin_username", "Superadmin"),
         role=session.get("admin_role", "superadmin"),
     )
 
 
 # =========================================================
-# JSON REST API UNTUK DASHBOARD (HANYA SUPERADMIN)
+# JSON REST API UNTUK API KEYS
 # =========================================================
 
 @admin_web_bp.route("/api/keys", methods=["GET"])
@@ -97,10 +144,22 @@ def get_all_keys():
     try:
         keys = db.session.scalars(db.select(ApiKey).order_by(ApiKey.created_at.desc())).all()
         
-        gemini_keys = [k.to_dict(include_key=False) for k in keys if k.provider == "gemini"]
-        elevenlabs_keys = [k.to_dict(include_key=False) for k in keys if k.provider == "elevenlabs"]
+        gemini_keys = []
+        for k in keys:
+            if k.provider == "gemini":
+                d = k.to_dict(include_key=False)
+                d["last_used_at"] = format_indo_datetime(k.last_used_at)
+                d["created_at"] = format_indo_datetime(k.created_at)
+                gemini_keys.append(d)
 
-        # Summary stats
+        elevenlabs_keys = []
+        for k in keys:
+            if k.provider == "elevenlabs":
+                d = k.to_dict(include_key=False)
+                d["last_used_at"] = format_indo_datetime(k.last_used_at)
+                d["created_at"] = format_indo_datetime(k.created_at)
+                elevenlabs_keys.append(d)
+
         stats = {
             "total_keys": len(keys),
             "gemini_total": len(gemini_keys),
@@ -255,6 +314,229 @@ def delete_key(key_id):
         return jsonify({
             "success": True,
             "message": f"API Key '{label}' berhasil dihapus dari sistem.",
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# =========================================================
+# JSON REST API UNTUK USER & ROLE MANAGEMENT
+# =========================================================
+
+@admin_web_bp.route("/api/users", methods=["GET"])
+@superadmin_required
+def get_all_users():
+    try:
+        search_query = request.args.get("q", "").strip().lower()
+        role_filter = request.args.get("role", "").strip().lower()
+        
+        try:
+            page = max(1, int(request.args.get("page", 1)))
+        except (ValueError, TypeError):
+            page = 1
+            
+        try:
+            per_page = max(1, min(100, int(request.args.get("per_page", 10))))
+        except (ValueError, TypeError):
+            per_page = 10
+
+        # Global stats calculation
+        all_users_total = db.session.scalars(db.select(User)).all()
+        stats = {
+            "total_users": len(all_users_total),
+            "total_students": len([u for u in all_users_total if u.role == "user"]),
+            "total_admins": len([u for u in all_users_total if u.role == "admin"]),
+            "total_superadmins": len([u for u in all_users_total if u.role == "superadmin"]),
+        }
+
+        role_priority = case(
+            (User.role == "superadmin", 1),
+            (User.role == "admin", 2),
+            else_=3
+        )
+        stmt = db.select(User).order_by(role_priority.asc(), User.id.desc())
+
+        if role_filter and role_filter in ["user", "admin", "superadmin"]:
+            stmt = stmt.filter(User.role == role_filter)
+
+        filtered_users = db.session.scalars(stmt).all()
+
+        if search_query:
+            filtered_users = [
+                u for u in filtered_users 
+                if (search_query in u.username.lower() or search_query in u.email.lower())
+            ]
+
+        total_items = len(filtered_users)
+        total_pages = max(1, (total_items + per_page - 1) // per_page)
+        if page > total_pages:
+            page = total_pages
+
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        page_users = filtered_users[start_idx:end_idx]
+
+        users_list = []
+        for u in page_users:
+            users_list.append({
+                "id": u.id,
+                "username": u.username,
+                "email": u.email,
+                "role": u.role or "user",
+                "last_login_date": format_indo_date(u.last_login_date),
+            })
+
+        return jsonify({
+            "success": True,
+            "stats": stats,
+            "users": users_list,
+            "pagination": {
+                "current_page": page,
+                "per_page": per_page,
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "from_item": start_idx + 1 if total_items > 0 else 0,
+                "to_item": min(end_idx, total_items),
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_web_bp.route("/api/users", methods=["POST"])
+@superadmin_required
+def create_user():
+    try:
+        data = request.get_json() or {}
+        username = data.get("username", "").strip()
+        email = data.get("email", "").strip().lower()
+        password = data.get("password", "").strip()
+        role = data.get("role", "admin").strip().lower()
+
+        if not username or not email or not password:
+            return jsonify({"success": False, "error": "Username, email, dan password wajib diisi."}), 400
+
+        if role not in ["user", "admin", "superadmin"]:
+            return jsonify({"success": False, "error": "Role tidak valid."}), 400
+
+        if len(password) < 6:
+            return jsonify({"success": False, "error": "Password minimal 6 karakter."}), 400
+
+        # Cek email / username duplicate
+        if db.session.scalar(db.select(User).filter_by(email=email)):
+            return jsonify({"success": False, "error": f"Email '{email}' sudah terdaftar."}), 400
+
+        if db.session.scalar(db.select(User).filter_by(username=username)):
+            return jsonify({"success": False, "error": f"Username '{username}' sudah digunakan."}), 400
+
+        password_hash = bcrypt.generate_password_hash(password).decode("utf-8")
+
+        new_user = User(
+            username=username,
+            email=email,
+            password_hash=password_hash,
+            role=role,
+            total_xp=0,
+            streak_count=0,
+        )
+        db.session.add(new_user)
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": f"Pengguna '{username}' berhasil dibuat dengan role [{role.upper()}]!",
+            "user": {
+                "id": new_user.id,
+                "username": new_user.username,
+                "email": new_user.email,
+                "role": new_user.role,
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_web_bp.route("/api/users/<int:user_id>/role", methods=["POST"])
+@superadmin_required
+def change_user_role(user_id):
+    try:
+        data = request.get_json() or {}
+        new_role = data.get("role", "").strip().lower()
+
+        if new_role not in ["user", "admin", "superadmin"]:
+            return jsonify({"success": False, "error": "Role harus 'user', 'admin', atau 'superadmin'."}), 400
+
+        user = db.session.get(User, user_id)
+        if not user:
+            return jsonify({"success": False, "error": "Pengguna tidak ditemukan."}), 404
+
+        # Cegah superadmin mendemote akunnya sendiri jika sedang login
+        current_admin_id = session.get("admin_user_id")
+        if user.id == current_admin_id and new_role != "superadmin":
+            return jsonify({"success": False, "error": "Anda tidak dapat menurunkan role akun Anda sendiri saat sedang login."}), 400
+
+        old_role = user.role
+        user.role = new_role
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": f"Role '{user.username}' berhasil diubah dari [{old_role.upper()}] menjadi [{new_role.upper()}].",
+            "role": user.role,
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_web_bp.route("/api/users/<int:user_id>/reset-password", methods=["POST"])
+@superadmin_required
+def reset_user_password(user_id):
+    try:
+        data = request.get_json() or {}
+        new_password = data.get("new_password", "").strip()
+
+        if not new_password or len(new_password) < 6:
+            return jsonify({"success": False, "error": "Password baru minimal 6 karakter."}), 400
+
+        user = db.session.get(User, user_id)
+        if not user:
+            return jsonify({"success": False, "error": "Pengguna tidak ditemukan."}), 404
+
+        user.password_hash = bcrypt.generate_password_hash(new_password).decode("utf-8")
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": f"Password untuk '{user.username}' ({user.email}) berhasil di-reset!",
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_web_bp.route("/api/users/<int:user_id>", methods=["DELETE"])
+@superadmin_required
+def delete_user(user_id):
+    try:
+        user = db.session.get(User, user_id)
+        if not user:
+            return jsonify({"success": False, "error": "Pengguna tidak ditemukan."}), 404
+
+        # Cegah menghapus akun sendiri
+        current_admin_id = session.get("admin_user_id")
+        if user.id == current_admin_id:
+            return jsonify({"success": False, "error": "Anda tidak dapat menghapus akun Anda sendiri."}), 400
+
+        username = user.username
+        db.session.delete(user)
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": f"Pengguna '{username}' berhasil dihapus dari sistem.",
         })
     except Exception as e:
         db.session.rollback()

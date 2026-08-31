@@ -1,0 +1,638 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Kelola Pengguna & Role - Science Craft Superadmin{% endblock %}
+
+{% block content %}
+<!-- Top Navigation -->
+<nav class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+            <!-- Brand & Nav Links -->
+            <div class="flex items-center space-x-8">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20">
+                        <i data-lucide="shield-check" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <span class="font-bold text-slate-900 text-base">Science Craft</span>
+                        <span class="text-xs bg-indigo-100 text-indigo-800 font-semibold px-2 py-0.5 rounded-full ml-1.5 uppercase tracking-wider">Superadmin</span>
+                    </div>
+                </div>
+
+                <!-- Navigation Tabs -->
+                <div class="hidden md:flex space-x-1">
+                    <a href="{{ url_for('admin_web.api_keys_dashboard') }}"
+                       class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors flex items-center space-x-2">
+                        <i data-lucide="key" class="w-4 h-4"></i>
+                        <span>API Key Pool</span>
+                    </a>
+                    <a href="{{ url_for('admin_web.users_dashboard') }}"
+                       class="px-3.5 py-2 rounded-xl text-xs font-bold text-indigo-600 bg-indigo-50/80 transition-colors flex items-center space-x-2 border border-indigo-100">
+                        <i data-lucide="users" class="w-4 h-4"></i>
+                        <span>Kelola Pengguna & Role</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- User Menu -->
+            <div class="flex items-center space-x-4">
+                <div class="text-right hidden sm:block">
+                    <p class="text-xs font-semibold text-slate-900">{{ username }}</p>
+                    <p class="text-[11px] text-indigo-600 font-bold uppercase tracking-wider">{{ role }}</p>
+                </div>
+                <div class="h-8 w-[1px] bg-slate-200 hidden sm:block"></div>
+                <a href="{{ url_for('admin_web.logout') }}"
+                   class="inline-flex items-center space-x-1.5 text-xs font-medium text-slate-600 hover:text-rose-600 py-2 px-3 rounded-lg hover:bg-rose-50 transition-colors">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                    <span>Logout</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<!-- Main Container -->
+<main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    
+    <!-- Hero / Header Section -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Manajemen Pengguna & Otorisasi Role</h1>
+            <p class="text-sm text-slate-500 mt-1">Kelola seluruh pengguna, tunjuk akun Admin materi, atau daftarkan guru baru.</p>
+        </div>
+        <div class="flex items-center space-x-3">
+            <button onclick="fetchUsers(currentPage)"
+                    class="inline-flex items-center space-x-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-4 py-2.5 rounded-xl shadow-sm transition-all">
+                <i data-lucide="refresh-cw" id="refresh-icon" class="w-4 h-4"></i>
+                <span>Refresh Data</span>
+            </button>
+            <button onclick="openAddUserModal()"
+                    class="inline-flex items-center space-x-2 text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 px-4 py-2.5 rounded-xl shadow-md shadow-indigo-600/20 transition-all">
+                <i data-lucide="user-plus" class="w-4 h-4"></i>
+                <span>Tambah Admin / User</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Stat Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <!-- Total Users -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700 flex-shrink-0">
+                <i data-lucide="users" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Pengguna</p>
+                <h3 id="stat-total" class="text-2xl font-bold text-slate-900 mt-0.5">-</h3>
+            </div>
+        </div>
+
+        <!-- Students (user) -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-sky-50 flex items-center justify-center text-sky-600 flex-shrink-0">
+                <i data-lucide="graduation-cap" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Siswa (User)</p>
+                <h3 id="stat-students" class="text-2xl font-bold text-sky-600 mt-0.5">-</h3>
+            </div>
+        </div>
+
+        <!-- Admins (admin) -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 flex-shrink-0">
+                <i data-lucide="book-open-check" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Admin Materi</p>
+                <h3 id="stat-admins" class="text-2xl font-bold text-indigo-600 mt-0.5">-</h3>
+            </div>
+        </div>
+
+        <!-- Superadmins (superadmin) -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 flex-shrink-0">
+                <i data-lucide="shield" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Superadmin (IT)</p>
+                <h3 id="stat-superadmins" class="text-2xl font-bold text-purple-600 mt-0.5">-</h3>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter & Table Card -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+        <!-- Search & Filter Controls -->
+        <div class="border-b border-slate-200 bg-slate-50/50 p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div class="relative flex-1 max-w-md">
+                <span class="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
+                    <i data-lucide="search" class="w-4 h-4"></i>
+                </span>
+                <input type="text" id="search-input" oninput="debounceSearch()" placeholder="Cari nama pengguna atau email..."
+                       class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs bg-white">
+            </div>
+
+            <div class="flex items-center space-x-4">
+                <!-- Filter Role -->
+                <div class="flex items-center space-x-2">
+                    <label class="text-xs font-semibold text-slate-500">Filter Role:</label>
+                    <select id="role-filter" onchange="onFilterChange()"
+                            class="px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs bg-white font-medium text-slate-700">
+                        <option value="">Semua Role</option>
+                        <option value="user">Siswa (User)</option>
+                        <option value="admin">Admin Materi (Admin)</option>
+                        <option value="superadmin">Superadmin (IT)</option>
+                    </select>
+                </div>
+
+                <!-- Per Page Selector -->
+                <div class="flex items-center space-x-2">
+                    <label class="text-xs font-semibold text-slate-500">Baris:</label>
+                    <select id="per-page-select" onchange="changePerPage(this.value)"
+                            class="px-2.5 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs bg-white font-medium text-slate-700">
+                        <option value="10" selected>10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Table Content -->
+        <div class="p-6 flex-1">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            <th class="pb-3 px-3">Pengguna</th>
+                            <th class="pb-3 px-3">Email Akun</th>
+                            <th class="pb-3 px-3">Otorisasi Role</th>
+                            <th class="pb-3 px-3">Login Terakhir</th>
+                            <th class="pb-3 px-3 text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body" class="divide-y divide-slate-100 text-sm">
+                        <!-- Dynamic items -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Pagination Footer -->
+        <div id="pagination-footer" class="border-t border-slate-200 bg-slate-50/50 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="text-xs text-slate-500 font-medium">
+                Menampilkan <span id="page-from" class="font-bold text-slate-800">0</span> sampai <span id="page-to" class="font-bold text-slate-800">0</span> dari <span id="page-total" class="font-bold text-slate-800">0</span> pengguna
+            </div>
+
+            <!-- Page Buttons -->
+            <div class="flex items-center space-x-1.5" id="pagination-buttons">
+                <!-- Dynamic Page Buttons -->
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- MODAL TAMBAH USER / ADMIN BARU -->
+<div id="add-user-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 transform transition-all">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+            <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                    <i data-lucide="user-plus" class="w-4 h-4"></i>
+                </div>
+                <h3 class="font-bold text-slate-900 text-base">Tambah Akun Baru</h3>
+            </div>
+            <button onclick="closeAddUserModal()" class="text-slate-400 hover:text-slate-600">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <form id="form-add-user" onsubmit="submitAddUser(event)" class="mt-5 space-y-4">
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Nama / Username</label>
+                <input type="text" id="input-username" required placeholder="Misal: Bu Guru Rina"
+                       class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Alamat Email</label>
+                <input type="email" id="input-email" required placeholder="guru.rina@sekolah.sch.id"
+                       class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Password</label>
+                <input type="password" id="input-password" required placeholder="Minimal 6 karakter" minlength="6"
+                       class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Role Otorisasi</label>
+                <select id="input-role" required
+                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-medium">
+                    <option value="admin">Admin Materi (Kelola Modul, Soal & Kuis)</option>
+                    <option value="user">Siswa (User Biasa)</option>
+                    <option value="superadmin">Superadmin (Tim IT / Master)</option>
+                </select>
+            </div>
+
+            <div class="pt-4 flex justify-end space-x-3">
+                <button type="button" onclick="closeAddUserModal()"
+                        class="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors">
+                    Batal
+                </button>
+                <button type="submit" id="btn-submit-user"
+                        class="px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition-all flex items-center space-x-1.5">
+                    <span>Simpan Pengguna</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL RESET PASSWORD -->
+<div id="reset-password-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-slate-200 transform transition-all">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+            <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">
+                    <i data-lucide="key-round" class="w-4 h-4"></i>
+                </div>
+                <h3 class="font-bold text-slate-900 text-base">Reset Password</h3>
+            </div>
+            <button onclick="closeResetModal()" class="text-slate-400 hover:text-slate-600">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <form id="form-reset-password" onsubmit="submitResetPassword(event)" class="mt-5 space-y-4">
+            <input type="hidden" id="reset-user-id">
+            <p class="text-xs text-slate-600">Masukkan password baru untuk <b id="reset-username-label" class="text-slate-900"></b>:</p>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Password Baru</label>
+                <input type="password" id="input-new-password" required placeholder="Minimal 6 karakter" minlength="6"
+                       class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+            </div>
+
+            <div class="pt-4 flex justify-end space-x-3">
+                <button type="button" onclick="closeResetModal()"
+                        class="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors">
+                    Batal
+                </button>
+                <button type="submit" id="btn-submit-reset"
+                        class="px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-600/20 transition-all flex items-center space-x-1.5">
+                    <span>Ubah Password</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let searchTimer = null;
+    let currentPage = 1;
+    let perPage = 10;
+    let totalPages = 1;
+
+    function debounceSearch() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            currentPage = 1;
+            fetchUsers(1);
+        }, 300);
+    }
+
+    function onFilterChange() {
+        currentPage = 1;
+        fetchUsers(1);
+    }
+
+    function changePerPage(newVal) {
+        perPage = parseInt(newVal) || 10;
+        currentPage = 1;
+        fetchUsers(1);
+    }
+
+    function goToPage(page) {
+        if (page < 1 || page > totalPages || page === currentPage) return;
+        currentPage = page;
+        fetchUsers(page);
+    }
+
+    async function fetchUsers(page = 1) {
+        const refreshIcon = document.getElementById('refresh-icon');
+        refreshIcon.classList.add('animate-spin');
+
+        const q = document.getElementById('search-input').value.trim();
+        const role = document.getElementById('role-filter').value;
+
+        try {
+            const url = `/admin/web/api/users?q=${encodeURIComponent(q)}&role=${encodeURIComponent(role)}&page=${page}&per_page=${perPage}`;
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (data.success) {
+                // Update Global Stats
+                document.getElementById('stat-total').innerText = data.stats.total_users;
+                document.getElementById('stat-students').innerText = data.stats.total_students;
+                document.getElementById('stat-admins').innerText = data.stats.total_admins;
+                document.getElementById('stat-superadmins').innerText = data.stats.total_superadmins;
+
+                // Update Pagination Info
+                const pag = data.pagination;
+                currentPage = pag.current_page;
+                totalPages = pag.total_pages;
+
+                document.getElementById('page-from').innerText = pag.from_item;
+                document.getElementById('page-to').innerText = pag.to_item;
+                document.getElementById('page-total').innerText = pag.total_items;
+
+                renderUsersTable(data.users);
+                renderPaginationButtons(pag);
+            } else {
+                showToast(data.error || "Gagal memuat data pengguna", "error");
+            }
+        } catch (e) {
+            showToast("Terjadi kesalahan jaringan", "error");
+        } finally {
+            setTimeout(() => refreshIcon.classList.remove('animate-spin'), 400);
+        }
+    }
+
+    function renderUsersTable(users) {
+        const tbody = document.getElementById('users-table-body');
+        if (!users || users.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="py-8 text-center text-slate-400 text-xs">
+                        Tidak ada data pengguna yang cocok dengan filter / pencarian.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = users.map(u => {
+            const initial = (u.username || 'U').charAt(0).toUpperCase();
+            
+            return `
+                <tr class="hover:bg-slate-50/80 transition-colors">
+                    <!-- User Info -->
+                    <td class="py-3.5 px-3">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-sm">
+                                ${initial}
+                            </div>
+                            <div>
+                                <p class="font-semibold text-slate-800 text-sm">${u.username}</p>
+                                <p class="text-[11px] text-slate-400">ID: #${u.id}</p>
+                            </div>
+                        </div>
+                    </td>
+
+                    <!-- Email -->
+                    <td class="py-3.5 px-3 text-xs text-slate-600 font-mono">${u.email}</td>
+
+                    <!-- Role Dropdown Selector -->
+                    <td class="py-3.5 px-3">
+                        <select onchange="updateUserRole(${u.id}, this.value)"
+                                class="text-xs font-semibold px-2.5 py-1 rounded-lg border focus:outline-none transition-all ${
+                                    u.role === 'superadmin' 
+                                        ? 'bg-purple-50 text-purple-700 border-purple-200 focus:ring-2 focus:ring-purple-500' 
+                                        : (u.role === 'admin' 
+                                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200 focus:ring-2 focus:ring-indigo-500' 
+                                            : 'bg-slate-100 text-slate-700 border-slate-200 focus:ring-2 focus:ring-slate-400')
+                                }">
+                            <option value="user" ${u.role === 'user' ? 'selected' : ''}>Siswa (User)</option>
+                            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin Materi (Admin)</option>
+                            <option value="superadmin" ${u.role === 'superadmin' ? 'selected' : ''}>Superadmin (IT)</option>
+                        </select>
+                    </td>
+
+                    <!-- Last Login -->
+                    <td class="py-3.5 px-3 text-xs text-slate-500">${u.last_login_date || '-'}</td>
+
+                    <!-- Actions -->
+                    <td class="py-3.5 px-3 text-right space-x-1">
+                        <button onclick="openResetModal(${u.id}, '${u.username}')" 
+                                title="Reset Password"
+                                class="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 border border-amber-200 transition-colors">
+                            <i data-lucide="key-round" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="deleteUser(${u.id}, '${u.username}')" 
+                                title="Hapus Akun"
+                                class="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 border border-rose-200 transition-colors">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        lucide.createIcons();
+    }
+
+    function renderPaginationButtons(pag) {
+        const container = document.getElementById('pagination-buttons');
+        const curr = pag.current_page;
+        const total = pag.total_pages;
+
+        if (total <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+
+        let buttonsHtml = '';
+
+        // Previous Button
+        buttonsHtml += `
+            <button onclick="goToPage(${curr - 1})" ${curr <= 1 ? 'disabled class="opacity-40 cursor-not-allowed"' : 'class="hover:bg-slate-200"'}
+                    class="p-1.5 rounded-lg border border-slate-200 text-slate-600 transition-colors text-xs font-semibold flex items-center justify-center">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+            </button>
+        `;
+
+        // Page Numbers logic (show max 5 buttons)
+        let startPage = Math.max(1, curr - 2);
+        let endPage = Math.min(total, startPage + 4);
+        if (endPage - startPage < 4) {
+            startPage = Math.max(1, endPage - 4);
+        }
+
+        if (startPage > 1) {
+            buttonsHtml += `
+                <button onclick="goToPage(1)" class="w-7 h-7 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100">1</button>
+            `;
+            if (startPage > 2) {
+                buttonsHtml += `<span class="text-xs text-slate-400 px-1">...</span>`;
+            }
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            if (i === curr) {
+                buttonsHtml += `
+                    <button class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow-sm shadow-indigo-600/30">${i}</button>
+                `;
+            } else {
+                buttonsHtml += `
+                    <button onclick="goToPage(${i})" class="w-7 h-7 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100">${i}</button>
+                `;
+            }
+        }
+
+        if (endPage < total) {
+            if (endPage < total - 1) {
+                buttonsHtml += `<span class="text-xs text-slate-400 px-1">...</span>`;
+            }
+            buttonsHtml += `
+                <button onclick="goToPage(${total})" class="w-7 h-7 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100">${total}</button>
+            `;
+        }
+
+        // Next Button
+        buttonsHtml += `
+            <button onclick="goToPage(${curr + 1})" ${curr >= total ? 'disabled class="opacity-40 cursor-not-allowed"' : 'class="hover:bg-slate-200"'}
+                    class="p-1.5 rounded-lg border border-slate-200 text-slate-600 transition-colors text-xs font-semibold flex items-center justify-center">
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+            </button>
+        `;
+
+        container.innerHTML = buttonsHtml;
+        lucide.createIcons();
+    }
+
+    // UPDATE ROLE INSTANTLY
+    async function updateUserRole(userId, newRole) {
+        try {
+            const res = await fetch(`/admin/web/api/users/${userId}/role`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role: newRole })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                fetchUsers(currentPage);
+            } else {
+                showToast(data.error || "Gagal mengubah role", 'error');
+                fetchUsers(currentPage);
+            }
+        } catch (e) {
+            showToast("Terjadi kesalahan sistem", 'error');
+            fetchUsers(currentPage);
+        }
+    }
+
+    // ADD USER MODAL
+    function openAddUserModal() {
+        document.getElementById('add-user-modal').classList.remove('hidden');
+    }
+
+    function closeAddUserModal() {
+        document.getElementById('add-user-modal').classList.add('hidden');
+        document.getElementById('form-add-user').reset();
+    }
+
+    async function submitAddUser(e) {
+        e.preventDefault();
+        const username = document.getElementById('input-username').value;
+        const email = document.getElementById('input-email').value;
+        const password = document.getElementById('input-password').value;
+        const role = document.getElementById('input-role').value;
+        const submitBtn = document.getElementById('btn-submit-user');
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span>Menyimpan...</span>`;
+
+        try {
+            const res = await fetch('/admin/web/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, email, password, role })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                closeAddUserModal();
+                fetchUsers(1);
+            } else {
+                showToast(data.error || "Gagal menambahkan pengguna", 'error');
+            }
+        } catch (e) {
+            showToast("Terjadi kesalahan jaringan", 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `<span>Simpan Pengguna</span>`;
+        }
+    }
+
+    // RESET PASSWORD MODAL
+    function openResetModal(userId, username) {
+        document.getElementById('reset-user-id').value = userId;
+        document.getElementById('reset-username-label').innerText = username;
+        document.getElementById('reset-password-modal').classList.remove('hidden');
+    }
+
+    function closeResetModal() {
+        document.getElementById('reset-password-modal').classList.add('hidden');
+        document.getElementById('form-reset-password').reset();
+    }
+
+    async function submitResetPassword(e) {
+        e.preventDefault();
+        const userId = document.getElementById('reset-user-id').value;
+        const new_password = document.getElementById('input-new-password').value;
+        const submitBtn = document.getElementById('btn-submit-reset');
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span>Mengubah...</span>`;
+
+        try {
+            const res = await fetch(`/admin/web/api/users/${userId}/reset-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ new_password })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                closeResetModal();
+            } else {
+                showToast(data.error || "Gagal mereset password", 'error');
+            }
+        } catch (e) {
+            showToast("Terjadi kesalahan jaringan", 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `<span>Ubah Password</span>`;
+        }
+    }
+
+    // DELETE USER
+    async function deleteUser(userId, username) {
+        if (!confirm(`Apakah Anda yakin ingin menghapus akun '${username}'? Data progress dan aktivitas pengguna ini akan ikut terhapus.`)) return;
+
+        try {
+            const res = await fetch(`/admin/web/api/users/${userId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                fetchUsers(currentPage);
+            } else {
+                showToast(data.error || "Gagal menghapus pengguna", 'error');
+            }
+        } catch (e) {
+            showToast("Terjadi kesalahan sistem", 'error');
+        }
+    }
+
+    // Init
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchUsers(1);
+    });
+</script>
+{% endblock %}
