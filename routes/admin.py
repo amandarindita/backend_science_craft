@@ -56,7 +56,7 @@ def current_user_id():
 
 def is_admin(user_id):
     user = db.session.get(User, user_id)
-    return bool(user and user.role == "admin")
+    return bool(user and user.role in ("admin", "superadmin"))
 
 
 def require_admin():

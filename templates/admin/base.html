@@ -73,6 +73,28 @@
     <!-- Toast Container (Responsive) -->
     <div id="toast-container" class="fixed top-3 left-3 right-3 sm:left-auto sm:right-5 sm:top-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
 
+    <!-- Global Confirmation Modal -->
+    <div id="confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-slate-200 transform transition-all text-center">
+            <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4" id="confirm-icon-box">
+                <i data-lucide="trash-2" class="w-6 h-6" id="confirm-icon"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-900" id="confirm-title">Konfirmasi Hapus</h3>
+            <p class="text-xs text-slate-500 mt-2 leading-relaxed" id="confirm-message">Apakah Anda yakin ingin melakukan tindakan ini?</p>
+            
+            <div class="mt-6 flex items-center space-x-3">
+                <button type="button" onclick="closeConfirmModal()"
+                        class="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+                    Batal
+                </button>
+                <button type="button" id="confirm-action-btn"
+                        class="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-md shadow-rose-600/20 transition-all flex items-center justify-center space-x-1.5">
+                    <span id="confirm-btn-text">Ya, Hapus</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     {% block content %}{% endblock %}
 
     <script>
@@ -106,6 +128,64 @@
                 setTimeout(() => toast.remove(), 300);
             }, 4000);
         }
+
+        // CONFIRMATION MODAL HELPER
+        let confirmActionCallback = null;
+
+        function showConfirmDialog({
+            title = 'Konfirmasi Tindakan',
+            message = 'Apakah Anda yakin?',
+            confirmText = 'Ya, Hapus',
+            confirmType = 'danger',
+            onConfirm = null
+        }) {
+            document.getElementById('confirm-title').innerText = title;
+            document.getElementById('confirm-message').innerHTML = message;
+            document.getElementById('confirm-btn-text').innerText = confirmText;
+
+            const iconBox = document.getElementById('confirm-icon-box');
+            const actionBtn = document.getElementById('confirm-action-btn');
+            const icon = document.getElementById('confirm-icon');
+
+            if (confirmType === 'danger') {
+                iconBox.className = 'w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4';
+                actionBtn.className = 'flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-md shadow-rose-600/20 transition-all flex items-center justify-center space-x-1.5';
+                icon.setAttribute('data-lucide', 'trash-2');
+            } else {
+                iconBox.className = 'w-12 h-12 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center mx-auto mb-4';
+                actionBtn.className = 'flex-1 py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold shadow-md shadow-sky-600/20 transition-all flex items-center justify-center space-x-1.5';
+                icon.setAttribute('data-lucide', 'alert-circle');
+            }
+            lucide.createIcons();
+
+            confirmActionCallback = onConfirm;
+            document.getElementById('confirm-modal').classList.remove('hidden');
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').classList.add('hidden');
+            confirmActionCallback = null;
+        }
+
+        document.getElementById('confirm-action-btn').addEventListener('click', async () => {
+            if (confirmActionCallback) {
+                const btn = document.getElementById('confirm-action-btn');
+                const originalContent = btn.innerHTML;
+                btn.disabled = true;
+                btn.classList.add('opacity-50');
+                btn.innerHTML = `<span class="animate-spin mr-1.5">⏳</span> Sedang menghapus...`;
+                try {
+                    await confirmActionCallback();
+                } finally {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50');
+                    btn.innerHTML = originalContent;
+                    closeConfirmModal();
+                }
+            } else {
+                closeConfirmModal();
+            }
+        });
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>

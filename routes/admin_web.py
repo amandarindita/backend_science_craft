@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, session, flash
 from extensions import db, bcrypt
@@ -34,10 +34,18 @@ def format_indo_datetime(dt):
     if not dt:
         return "-"
     try:
-        from datetime import timedelta
         wib_dt = dt + timedelta(hours=7)
         month_name = MONTHS_INDO[wib_dt.month - 1]
         return f"{wib_dt.day} {month_name} {wib_dt.year}, {wib_dt.strftime('%H:%M')} WIB"
+    except Exception:
+        return str(dt)
+
+def format_time_wib(dt):
+    if not dt:
+        return None
+    try:
+        wib_dt = dt + timedelta(hours=7)
+        return f"{wib_dt.strftime('%H:%M:%S')} WIB"
     except Exception:
         return str(dt)
 
@@ -53,11 +61,15 @@ def superadmin_required(f):
     def decorated_function(*args, **kwargs):
         admin_id = session.get("admin_user_id")
         if not admin_id:
+            if request.path.startswith("/admin/web/api") or request.is_json:
+                return jsonify({"success": False, "error": "Sesi telah berakhir, silakan login kembali."}), 401
             return redirect(url_for("admin_web.login_page"))
         
         user = db.session.get(User, admin_id)
         if not user or user.role != "superadmin":
             session.clear()
+            if request.path.startswith("/admin/web/api") or request.is_json:
+                return jsonify({"success": False, "error": "Akses Ditolak! Dashboard ini hanya dapat diakses oleh role SUPERADMIN."}), 403
             flash("Akses Ditolak! Dashboard ini hanya dapat diakses oleh role SUPERADMIN.", "error")
             return redirect(url_for("admin_web.login_page"))
             
@@ -89,7 +101,8 @@ def login_page():
             flash(f"Akses Ditolak! Akun Anda memiliki role '{user.role}'. Halaman ini khusus untuk SUPERADMIN (Tim IT/Owner).", "error")
             return render_template("admin/login.html")
 
-        # Set session
+        # Set session (clear first to prevent fixation)
+        session.clear()
         session["admin_user_id"] = user.id
         session["admin_username"] = user.username
         session["admin_email"] = user.email
@@ -142,6 +155,21 @@ def users_dashboard():
 @superadmin_required
 def get_all_keys():
     try:
+        now = datetime.utcnow()
+        # Auto-restore key yang masa cooldown-nya sudah selesai
+        cooling_keys = db.session.scalars(
+            db.select(ApiKey).filter(
+                ApiKey.status == "rate_limited",
+                ApiKey.cooldown_until <= now
+            )
+        ).all()
+        if cooling_keys:
+            for k in cooling_keys:
+                k.status = "active"
+                k.cooldown_until = None
+                k.last_error_message = None
+            db.session.commit()
+
         keys = db.session.scalars(db.select(ApiKey).order_by(ApiKey.created_at.desc())).all()
         
         gemini_keys = []
@@ -150,6 +178,7 @@ def get_all_keys():
                 d = k.to_dict(include_key=False)
                 d["last_used_at"] = format_indo_datetime(k.last_used_at)
                 d["created_at"] = format_indo_datetime(k.created_at)
+                d["cooldown_until"] = format_time_wib(k.cooldown_until)
                 gemini_keys.append(d)
 
         elevenlabs_keys = []
@@ -158,6 +187,7 @@ def get_all_keys():
                 d = k.to_dict(include_key=False)
                 d["last_used_at"] = format_indo_datetime(k.last_used_at)
                 d["created_at"] = format_indo_datetime(k.created_at)
+                d["cooldown_until"] = format_time_wib(k.cooldown_until)
                 elevenlabs_keys.append(d)
 
         stats = {
@@ -254,6 +284,12 @@ def reset_key_cooldown(key_id):
         if not key:
             return jsonify({"success": False, "error": "API Key tidak ditemukan."}), 404
 
+        if key.status == "quota_exhausted":
+            return jsonify({
+                "success": False,
+                "error": f"API Key '{key.label}' berstatus Kuota Habis. Silakan ganti/perbarui API Key melalui tombol Edit (✏️) atau isi kuota di akun provider.",
+            }), 400
+
         key.status = "active"
         key.cooldown_until = None
         key.last_error_message = "Cooldown di-reset secara manual oleh superadmin."
@@ -277,6 +313,17 @@ def test_single_key(key_id):
         if not key:
             return jsonify({"success": False, "error": "API Key tidak ditemukan."}), 404
 
+        now = datetime.utcnow()
+        # Jika key masih dalam masa cooldown Until, hormati cooldown dan jangan aktifkan dulu
+        if key.status == "rate_limited" and key.cooldown_until and key.cooldown_until > now:
+            time_wib = format_time_wib(key.cooldown_until)
+            return jsonify({
+                "success": False,
+                "message": f"Key sedang cooldown hingga {time_wib}. Klik Reset (🔄) untuk paksa aktif.",
+                "status": "rate_limited",
+                "cooldown_until": time_wib,
+            }), 200
+
         if key.provider == "gemini":
             is_valid, msg = KeyRotator.test_gemini_key(key.key_value)
         elif key.provider == "elevenlabs":
@@ -290,6 +337,18 @@ def test_single_key(key_id):
             key.last_error_message = None
         else:
             key.last_error_message = msg[:500]
+            msg_lower = msg.lower()
+            if "daily quota" in msg_lower or "kuota harian" in msg_lower or "habis total" in msg_lower or "quota exhausted" in msg_lower:
+                key.status = "quota_exhausted"
+                key.cooldown_until = None
+            elif "429" in msg_lower or "rate limit" in msg_lower:
+                key.status = "rate_limited"
+                key.cooldown_until = datetime.utcnow() + timedelta(seconds=120)
+            elif "invalid" in msg_lower or "401" in msg_lower or "403" in msg_lower or "permission" in msg_lower:
+                key.status = "invalid"
+                key.is_active = False
+            else:
+                key.status = "invalid"
         db.session.commit()
 
         return jsonify({

@@ -428,8 +428,8 @@
                 statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800">Invalid</span>`;
             }
 
-            const errorNote = k.last_error_message ? `<p class="text-[10px] text-rose-500 truncate max-w-xs mt-0.5" title="${k.last_error_message}">${k.last_error_message}</p>` : '';
-            const cooldownNote = (k.status === 'rate_limited' && k.cooldown_until) ? `<p class="text-[10px] text-amber-600 font-medium">Until: ${k.cooldown_until.split(' ')[1]}</p>` : '';
+            const errorNote = (k.status !== 'active' && k.last_error_message) ? `<p class="text-[10px] text-rose-500 truncate max-w-xs mt-0.5" title="${k.last_error_message}">${k.last_error_message}</p>` : '';
+            const cooldownNote = (k.status === 'rate_limited' && k.cooldown_until) ? `<p class="text-[10px] text-amber-600 font-medium">Until: ${k.cooldown_until}</p>` : '';
 
             return `
                 <tr class="hover:bg-slate-50/80 transition-colors">
@@ -465,10 +465,10 @@
                             <i data-lucide="zap" class="w-4 h-4"></i>
                         </button>
 
-                        <!-- Reset Cooldown Button (jika rate limited) -->
-                        ${k.status !== 'active' ? `
+                        <!-- Reset Cooldown Button (Hanya jika sedang status rate_limited) -->
+                        ${k.status === 'rate_limited' ? `
                             <button onclick="resetCooldown(${k.id})" 
-                                    title="Reset Status ke Active"
+                                    title="Reset Cooldown ke Active"
                                     class="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 border border-amber-200 transition-colors">
                                 <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
                             </button>
@@ -546,21 +546,27 @@
     }
 
     // DELETE KEY
-    async function deleteKey(keyId, label) {
-        if (!confirm(`Apakah Anda yakin ingin menghapus API Key "${label}"?`)) return;
-
-        try {
-            const res = await fetch(`/admin/web/api/keys/${keyId}`, { method: 'DELETE' });
-            const data = await res.json();
-            if (data.success) {
-                showToast(data.message, 'success');
-                fetchKeys();
-            } else {
-                showToast(data.error, 'error');
+    function deleteKey(keyId, label) {
+        showConfirmDialog({
+            title: 'Hapus API Key?',
+            message: `Apakah Anda yakin ingin menghapus API Key <strong>"${label}"</strong>? Tindakan ini permanen dan akan menghilangkannya dari rotasi server.`,
+            confirmText: 'Ya, Hapus Key',
+            confirmType: 'danger',
+            onConfirm: async () => {
+                try {
+                    const res = await fetch(`/admin/web/api/keys/${keyId}`, { method: 'DELETE' });
+                    const data = await res.json();
+                    if (data.success) {
+                        showToast(data.message, 'success');
+                        fetchKeys();
+                    } else {
+                        showToast(data.error || "Gagal menghapus API key", 'error');
+                    }
+                } catch (e) {
+                    showToast("Terjadi kesalahan sistem saat menghapus", 'error');
+                }
             }
-        } catch (e) {
-            showToast("Gagal menghapus key", 'error');
-        }
+        });
     }
 
     function toggleVoiceIdField() {

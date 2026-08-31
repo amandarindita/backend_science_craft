@@ -626,21 +626,27 @@
     }
 
     // DELETE USER
-    async function deleteUser(userId, username) {
-        if (!confirm(`Apakah Anda yakin ingin menghapus akun '${username}'? Data progress dan aktivitas pengguna ini akan ikut terhapus.`)) return;
-
-        try {
-            const res = await fetch(`/admin/web/api/users/${userId}`, { method: 'DELETE' });
-            const data = await res.json();
-            if (data.success) {
-                showToast(data.message, 'success');
-                fetchUsers(currentPage);
-            } else {
-                showToast(data.error || "Gagal menghapus pengguna", 'error');
+    function deleteUser(userId, username) {
+        showConfirmDialog({
+            title: 'Hapus Akun Pengguna?',
+            message: `Apakah Anda yakin ingin menghapus akun <strong>"${username}"</strong>? Seluruh data progress belajar dan aktivitas pengguna ini akan ikut terhapus.`,
+            confirmText: 'Ya, Hapus Akun',
+            confirmType: 'danger',
+            onConfirm: async () => {
+                try {
+                    const res = await fetch(`/admin/web/api/users/${userId}`, { method: 'DELETE' });
+                    const data = await res.json();
+                    if (data.success) {
+                        showToast(data.message, 'success');
+                        fetchUsers(currentPage);
+                    } else {
+                        showToast(data.error || "Gagal menghapus pengguna", 'error');
+                    }
+                } catch (e) {
+                    showToast("Terjadi kesalahan sistem", 'error');
+                }
             }
-        } catch (e) {
-            showToast("Terjadi kesalahan sistem", 'error');
-        }
+        });
     }
 
     // Init
