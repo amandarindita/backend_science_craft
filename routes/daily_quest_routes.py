@@ -204,9 +204,8 @@ def update_daily_quest_progress():
         "daily_quest": serialize_daily_quest(day)
     }), 200
 
-
 # =====================================================
-# 3. CLAIM REWARD DAILY QUEST
+# 3. CLAIM REWARD DAILY QUEST (BERUBAH JADI TIKET GACHA)
 # =====================================================
 @daily_quest_bp.route('/daily-quests/claim', methods=['POST'])
 @jwt_required()
@@ -233,38 +232,25 @@ def claim_daily_quest_reward():
             "daily_quest": serialize_daily_quest(day)
         }), 400
 
-    old_xp = int(user.total_xp or 0)
-    old_level = (user.total_xp // 200) + 1
-
-    user.total_xp += day.reward_xp
+    # HAPUS SELURUH LOGIKA PENAMBAHAN XP DAN LEVEL DI SINI
+    # Ganti murni menjadi penambahan Tiket Gacha
+    user.gacha_tickets = (user.gacha_tickets or 0) + 1
     user.daily_status = 'active'
     day.is_claimed = True
 
-    new_level = (user.total_xp // 200) + 1
-    level_up = new_level > old_level
-
-    if level_up:
-        notif = Notification(
-            user_id=user_id,
-            title="Hore! Level Naik! 🚀",
-            message=f"Keren banget! Sekarang kamu naik ke Level {new_level}!"
-        )
-        db.session.add(notif)
-
-    milestone_baru = sync_user_milestones(
-        user,
-        previous_xp=old_xp,
-        notify_new=True,
+    # Opsional: Catat notifikasi dapat tiket gacha
+    notif = Notification(
+        user_id=user_id,
+        title="Tiket Didapat! 🎟️",
+        message="Selamat! Misi harian selesai, 1 Tiket ditambahkan ke akunmu."
     )
+    db.session.add(notif)
 
     db.session.commit()
 
     return jsonify({
-        "message": f"Reward Daily Quest berhasil diklaim +{day.reward_xp} XP",
-        "reward_xp": day.reward_xp,
-        "current_xp": user.total_xp,
-        "level": new_level,
-        "level_up": level_up,
-        "new_milestones_unlocked": [r.reward_key for r in milestone_baru],
+        "message": "Reward Daily Quest berhasil diklaim +1 Tiket Gacha",
+        "reward_tickets": 1,
+        "gacha_tickets": user.gacha_tickets,
         "daily_quest": serialize_daily_quest(day)
     }), 200

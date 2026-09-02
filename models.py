@@ -82,6 +82,16 @@ class User(db.Model):
         db.Integer,
         default=0,
     )
+    gacha_tickets = db.Column(
+        db.Integer, default=0,
+        server_default="0",
+        nullable=False
+    )
+    shards = db.Column(
+        db.Integer, default=0,
+        server_default="0",
+        nullable=False
+    )
 
 
 # =========================================================
@@ -807,7 +817,22 @@ class UserFunFactRead(db.Model):
         ),
     )
 
+# =========================================================
+# CARD
+# =========================================================
 
+class Card(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)  # Nama ilmuwan
+    rarity = db.Column(db.String(20), nullable=False) # Tingkat kelangkaan (Common, Rare, dll)
+    description = db.Column(db.Text)                 # Info singkat tentang ilmuwan
+    image_url = db.Column(db.String(200))            # Path gambar kartunya
+
+class UserCard(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    card_id = db.Column(db.Integer, db.ForeignKey('card.id'), nullable=False)
+    obtained_at = db.Column(db.DateTime, default=datetime.utcnow)
 # =========================================================
 # BADGE
 # =========================================================

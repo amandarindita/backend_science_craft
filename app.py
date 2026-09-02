@@ -15,6 +15,7 @@ from routes.admin import admin_bp
 from routes.chatbot import chatbot_bp
 from routes.daily_quest_routes import daily_quest_bp
 from routes.learning import learning_bp
+from routes.gacha import gacha_bp
 # Pastikan semua model terbaca oleh migration
 import models
 
@@ -101,6 +102,7 @@ app.register_blueprint(admin_bp, url_prefix="/admin")
 app.register_blueprint(chatbot_bp, url_prefix="/chat")
 app.register_blueprint(daily_quest_bp)
 app.register_blueprint(learning_bp,url_prefix="/learning",)
+app.register_blueprint(gacha_bp, url_prefix="/gacha")
 
 
 # =====================================================

@@ -1036,63 +1036,65 @@ def recalculate_material_progress(
         "legacy_mode": False,
     }
 
-def is_level_unlocked(
-    user_id,
-    target_level,
-):
+def calculate_level_target_xp(target_level):
+    """
+    Menghitung total XP minimum dari seluruh modul wajib 
+    pada level-level sebelumnya secara kumulatif.
+    """
+    cumulative_xp = 0
+    # Cek dari level 1 sampai level sebelum target
+    for lvl in range(1, target_level):
+        materials = db.session.execute(
+            db.select(Material)
+            .where(
+                Material.level == lvl,
+                Material.is_required.is_(True),
+                Material.is_published.is_(True),
+            )
+        ).scalars().all()
+
+        for mat in materials:
+            # Hitung jumlah checkpoint wajib di modul ini (10 XP per checkpoint)
+            checkpoints_count = db.session.scalar(
+                db.select(db.func.count(Checkpoint.id))
+                .join(SubMaterial, Checkpoint.submaterial_id == SubMaterial.id)
+                .where(
+                    SubMaterial.material_id == mat.id,
+                    Checkpoint.is_required.is_(True)
+                )
+            ) or 0
+            cumulative_xp += checkpoints_count * CHECKPOINT_XP
+
+            # Cek apakah modul punya kuis (40 XP)
+            question_count = db.session.scalar(
+                db.select(db.func.count(Question.id))
+                .where(Question.material_id == mat.id)
+            ) or 0
+            if question_count > 0:
+                cumulative_xp += QUIZ_XP
+
+            # Cek apakah modul punya lab (50 XP)
+            if mat.unity_scene_id and str(mat.unity_scene_id).strip():
+                cumulative_xp += LAB_XP
+
+    return cumulative_xp
+
+def is_level_unlocked(user_id, target_level):
+    """
+    Level terbuka jika total XP user sudah mencapai 
+    target akumulasi XP dari level-level sebelumnya.
+    """
     if target_level <= 1:
         return True
 
-    previous_level = target_level - 1
+    user = db.session.get(User, user_id)
+    if not user:
+        return False
 
-    previous_materials = db.session.execute(
-        db.select(Material)
-        .where(
-            Material.level
-            == previous_level,
-            Material.is_required.is_(True),
-            Material.is_published.is_(True),
-        )
-        .order_by(
-            Material.module_order.asc(),
-            Material.id.asc(),
-        )
-    ).scalars().all()
+    user_xp = int(user.total_xp or 0)
+    required_xp = calculate_level_target_xp(target_level)
 
-    structured_materials = []
-
-    for material in previous_materials:
-        required_count = db.session.scalar(
-            db.select(
-                db.func.count(SubMaterial.id)
-            ).where(
-                SubMaterial.material_id
-                == material.id,
-                SubMaterial.is_required.is_(True),
-                SubMaterial.is_published.is_(True),
-            )
-        ) or 0
-
-        if required_count > 0:
-            structured_materials.append(
-                material
-            )
-
-    # Selama data level sebelumnya belum disusun,
-    # level berikutnya tidak dipaksa terkunci.
-    if not structured_materials:
-        return True
-
-    for material in structured_materials:
-        summary = recalculate_material_progress(
-            user_id,
-            material.id,
-        )
-
-        if not summary["module_completed"]:
-            return False
-
-    return True
+    return user_xp >= required_xp
 
 def checkpoint_for_student(
     checkpoint,
